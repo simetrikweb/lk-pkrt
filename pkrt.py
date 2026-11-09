@@ -600,7 +600,7 @@ elif page.startswith("🧮"):
     m4.metric("C-to-C 2026 vs 2025", f"{fnum(H['ctc'], 2)}%")
 
     def tabel_seri(d, dec, judul):
-        df = pd.DataFrame(d, index=SUBKOMPONEN, columns=PERIODE).T
+                   df = pd.DataFrame(d, index=PERIODE)
         func = lambda x: fnum(x, dec)
         disp = df.map(func) if hasattr(df, "map") else df.applymap(func)
         st.markdown(f"**{judul}**")
@@ -686,3 +686,53 @@ else:
 
     st.caption("⚠️ Aplikasi ini alat bantu hitung & QC. Angka final tetap mengikuti hasil Quality Control resmi BPS. "
                "Data contoh bersifat proxy historis Kabupaten Cirebon — ganti dengan data real Anda pada Tahap 2.")
+# =====================================================================
+# 💾 SIMPAN & MUAT DATA INPUT (FITUR TAMBAHAN)
+# =====================================================================
+import json
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 💾 Simpan / Muat Pekerjaan")
+
+def _kumpul_state():
+    return {
+        "pdrb_in": S["pdrb_in"].to_dict(),
+        "ihk_in": S["ihk_in"].to_dict(),
+        "susenas_in": S["susenas_in"].to_dict(orient="list"),
+        "penduduk": S["penduduk"],
+        "mode_periode": S["mode_periode"],
+        "fokus_tw": S["fokus_tw"],
+        "fokus_th": S["fokus_th"],
+        "rule_bpjs": S["rule_bpjs"],
+        "rule_stik": S["rule_stik"],
+        "bpjs_miliar": S["bpjs_miliar"],
+        "stik_miliar": S["stik_miliar"],
+        "ood_pct": S["ood_pct"],
+        "fisim_miliar": S["fisim_miliar"],
+        "asuransi_miliar": S["asuransi_miliar"],
+    }
+
+_json = json.dumps(_kumpul_state(), ensure_ascii=False, indent=2).encode("utf-8")
+st.sidebar.download_button("⬇️ Simpan data input (file JSON)", _json,
+                           file_name="data_pkrt_cirebon.json",
+                           mime="application/json")
+
+_upl = st.sidebar.file_uploader("⬆️ Muat data input dari file", type=["json"])
+if _upl is not None:
+    try:
+        _d = json.loads(_upl.getvalue().decode("utf-8"))
+        S["pdrb_in"] = pd.DataFrame(_d["pdrb_in"])
+        S["ihk_in"] = pd.DataFrame(_d["ihk_in"])
+        S["susenas_in"] = pd.DataFrame(_d["susenas_in"])
+        for _k in ["penduduk", "mode_periode", "fokus_tw", "fokus_th", "rule_bpjs",
+                   "rule_stik", "bpjs_miliar", "stik_miliar", "ood_pct",
+                   "fisim_miliar", "asuransi_miliar"]:
+            if _k in _d:
+                S[_k] = _d[_k]
+        for _wk in ["ed_pdrb", "ed_ihk", "ed_susenas"]:
+            st.session_state.pop(_wk, None)
+        st.sidebar.success("✅ Data berhasil dimuat!")
+        st.rerun()
+    except Exception as _e:
+        st.sidebar.error(f"Gagal memuat file: {_e}")
+
