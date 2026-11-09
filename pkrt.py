@@ -601,7 +601,7 @@ elif page.startswith("🧮"):
 
     def tabel_seri(d, dec, judul):
         df = pd.DataFrame(d, index=SUBKOMPONEN, columns=PERIODE).T
-                func = lambda x: fnum(x, dec)
+        func = lambda x: fnum(x, dec)
         disp = df.map(func) if hasattr(df, "map") else df.applymap(func)
         st.markdown(f"**{judul}**")
         st.dataframe(disp)
