@@ -249,7 +249,7 @@ def run_qc(W2, W1):
         float((share - share_prev).abs().max()) < 0.05, "Maks pergeseran share < 5 pp")
     add(2, "Pergeseran share", "Share dalam rentang historis wajar?", "Internal",
         float((share - share_prev).abs().max()) < 0.03, "Ambang 3 pp")
-    seas = (q.iat[:, t] if t else 0)
+    seas = (q.iloc[:, t] if t else 0)
     add(3, "Seasonal pattern", "Pola musiman (Lebaran/Nataru/ajran baru) tercermin?", "Internal",
         True, "Q1/Q3/Q4 sesuai kalender")
     add(4, "Pola q-to-q", "Volatilitas q-to-q wajar?", "Internal",
