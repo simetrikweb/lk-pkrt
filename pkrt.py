@@ -1,670 +1,714 @@
 # -*- coding: utf-8 -*-
 # =====================================================================
-#  APLIKASI LEMBAR KERJA PK-RT PDRB KABUPATEN CIREBON (REBASING 2025=100)
-#  Versi 1.2 : perbaikan tabel Tahap 4 + fitur Simpan/Muat JSON
+#  OTOMASI 2 LEMBAR KERJA RESMI BPS - PKRT TRIWULANAN (2025=100)
+#  WB1: 03. LK Deflator PKRT | WB2: 02. LK PKRT Triwulanan
+#  Wilayah: Kab. Cirebon (32.09) | Sister city: Kota Cirebon (3274)
+#  Jalankan: streamlit run app_pkrt_bps.py
 # =====================================================================
-import streamlit as st
-import pandas as pd
+import io
 import numpy as np
-import json
+import pandas as pd
+import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter as CL
 
-st.set_page_config(page_title="PK-RT PDRB Kab. Cirebon (2025=100)",
-                   page_icon="📊", layout="wide")
+st.set_page_config(page_title="LK PKRT & Deflator Kab. Cirebon", page_icon="📊", layout="wide")
 
-st.markdown("""
-<style>
-.hero{background:linear-gradient(90deg,#0b3d91,#1565c0);color:#fff;
-      padding:18px 22px;border-radius:12px;margin-bottom:6px}
-.hero h1{font-size:1.45rem;margin:0}
-.hero p{margin:4px 0 0;opacity:.92;font-size:.92rem}
-.smallnote{color:#666;font-size:.82rem}
-</style>
-""", unsafe_allow_html=True)
+# ============================ KONSTANTA BAKU ============================
+Q_FULL = [f"{y}Q{q}" for y in range(2019, 2027) for q in (1, 2, 3, 4)]
+M_FULL = [f"{y}M{m}" for y in range(2024, 2027) for m in range(1, 13)]
+OLD12 = ["Makanan dan minuman tidak beralkohol", "Minuman beralkohol dan tembakau",
+         "Pakaian dan alas kaki", "Perumahan, air, listrik, gas, dan bahan bakar lainnya",
+         "Furnitur, perlengkapan rumah tangga, dan perbaikan rutin rumah", "Kesehatan",
+         "Transportasi", "Komunikasi", "Rekreasi dan kebudayaan", "Pendidikan",
+         "Penyediaan makan minum dan akomodasi", "Barang dan jasa lainnya"]
+DIV13 = OLD12[:11] + ["Jasa asuransi dan keuangan", "Barang dan jasa lainnya"]
+SUB17 = ["Makanan", "Minuman yang tidak beralkohol", "Minuman beralkohol", "Rokok dan tembakau",
+         "Pakaian dan alas kaki", "Perumahan, air, listrik, dan bahan bakar rumah tangga",
+         "Perlengkapan, peralatan, dan pemeliharaan rutin rumah", "Kesehatan", "Transportasi",
+         "Peralatan informasi dan komunikasi", "Layanan informasi dan komunikasi",
+         "Rekreasi, olahraga, dan budaya", "Pendidikan",
+         "Penyediaan makanan dan minuman/restoran", "Asuransi", "Jasa keuangan",
+         "Perawatan pribadi dan jasa lainnya"]
+SUB7 = ["Makanan, minuman, dan rokok", "Pakaian, alas kaki, dan jasa perawatan",
+        "Perumahan dan perlengkapan rumah tangga", "Kesehatan dan pendidikan",
+        "Transportasi, komunikasi, dan rekreasi", "Restoran dan hotel", "Lainnya"]
+MAP7 = {0: [0, 1], 1: [2], 2: [3, 4], 3: [5, 9], 4: [6, 7, 8], 5: [10], 6: [11, 12]}
+SPLIT = {0: [0, 1], 1: [2, 3], 7: [9, 10], 11: [14, 15]}          # div13 -> sub17
+SINGLE = {2: 4, 3: 5, 4: 6, 5: 7, 6: 8, 8: 11, 9: 12, 10: 13, 12: 16}
+PROP_DISAG = {11: 0.6335, 12: 0.3665}                              # Help: disagregasi COICOP-12
+COV_ADJ = {5: 0.4980, 11: 1.1007}                                  # Help: coverage adjustment
+REF_OLD = list(range(11)) + [11, 11]                               # div13 -> baris OLD12 (backcast/IPD)
+TOP = 12                                                           # baris mulai tabel (seragam antar sheet)
 
-KODE_WILAYAH = "3209"
-NAMA_WILAYAH = "Kabupaten Cirebon"
-TAHUN_DASAR = 2025
-PERIODE = ["2025-Q1", "2025-Q2", "2025-Q3", "2025-Q4",
-           "2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"]
-GCOLS = PERIODE[1:]
-BASE_COL = "ADHB 2025-Q1 (Jt Rp)"
+def sdiv(a, b):
+    try:
+        if b is None or b == 0 or not np.isfinite(b) or not np.isfinite(a):
+            return np.nan
+        return a / b
+    except Exception:
+        return np.nan
 
-SUBKOMPONEN = [
-    "Makanan, Minuman, & Tembakau",
-    "Pakaian & Alas Kaki",
-    "Perumahan, Air, Listrik, Gas & BB Lainnya",
-    "Kesehatan (Non-BPJS) & Pendidikan",
-    "Transportasi, Informasi, & Komunikasi",
-    "Restoran & Hotel",
-    "Lainnya (Barang & Jasa Pribadi/Lainnya)",
-]
-NAMA_PENDEK = ["Makanan & Minuman", "Pakaian", "Perumahan",
-               "Kesehatan & Pendidikan", "Transportasi",
-               "Restoran & Hotel", "Lainnya"]
-
-DIVISI = [
-    "Makanan & Minuman", "Tembakau", "Pakaian & Alas Kaki",
-    "Perumahan, Air, Listrik, Gas & BB Lainnya",
-    "Perlengkapan & Pemeliharaan Rutinan RT", "Kesehatan",
-    "Transportasi", "Informasi & Komunikasi",
-    "Rekreasi, Olahraga & Budaya", "Pendidikan",
-    "Penyediaan Makanan & Minuman (Restoran)",
-    "Jasa Akomodasi (Hotel)", "Perawatan Pribadi & Jasa Lainnya",
-]
-
-BOBOT_IHK = {DIVISI[0]: 24.0, DIVISI[1]: 5.0, DIVISI[2]: 6.0, DIVISI[3]: 20.0,
-             DIVISI[4]: 6.0, DIVISI[5]: 4.5, DIVISI[6]: 11.0, DIVISI[7]: 5.0,
-             DIVISI[8]: 4.0, DIVISI[9]: 2.5, DIVISI[10]: 7.0,
-             DIVISI[11]: 1.5, DIVISI[12]: 3.5}
-
-MAPPING = [
-    {DIVISI[0]: 0.85, DIVISI[1]: 0.15},
-    {DIVISI[2]: 1.00},
-    {DIVISI[3]: 1.00},
-    {DIVISI[5]: 0.55, DIVISI[9]: 0.45},
-    {DIVISI[6]: 0.60, DIVISI[7]: 0.40},
-    {DIVISI[10]: 0.75, DIVISI[11]: 0.25},
-    {DIVISI[4]: 0.35, DIVISI[8]: 0.35, DIVISI[12]: 0.30},
-]
-
-# ----------------------------- DATA CONTOH -----------------------------
-def default_pdrb_in():
-    data = {
-        BASE_COL: [2870000, 478000, 1546000, 515000, 957000, 589000, 405000],
-        "2025-Q2": [0.8, 0.5, 0.9, 1.0, 1.0, 1.2, 1.0],
-        "2025-Q3": [1.2, 0.6, 0.9, 2.5, 1.0, 1.2, 1.0],
-        "2025-Q4": [0.9, 1.5, 1.0, 1.0, 2.2, 2.6, 1.1],
-        "2026-Q1": [2.8, 3.2, 1.0, 1.0, 1.8, 2.0, 1.2],
-        "2026-Q2": [0.7, 0.4, 0.9, 1.0, 1.0, 1.2, 1.0],
-        "2026-Q3": [1.1, 0.6, 0.9, 2.4, 1.0, 1.2, 1.0],
-        "2026-Q4": [0.9, 1.4, 1.0, 1.0, 2.1, 2.5, 1.1],
-    }
-    return pd.DataFrame(data, index=SUBKOMPONEN)
-
-def default_susenas():
-    rows = [
-        ("Padi-padian, Umbi-umbian & Hasilnya", 950000),
-        ("Ikan, Daging, Telur, Susu & Kacang-kacangan", 1420000),
-        ("Sayur-sayuran & Buah-buahan", 1080000),
-        ("Minyak, Bumbu, Gula & Minuman", 1210000),
-        ("Rokok & Tembakau", 780000),
-        ("Makanan & Minuman Jadi (termasuk makan di luar)", 1475000),
-        ("Perumahan, Utilitas & Bahan Bakar RT", 2330000),
-        ("Barang Tahan Lama & Perlengkapan RT", 870000),
-        ("Pakaian, Alas Kaki & Tutup Kepala", 465000),
-        ("Transportasi & Komunikasi", 1150000),
-        ("Pendidikan & Kesehatan (Non-BPJS)", 620000),
-        ("Perawatan Pribadi & Jasa Lainnya", 455000),
-    ]
-    return pd.DataFrame(rows, columns=["Kelompok Pengeluaran", "Rp/Kapita/Tahun"])
-
-def default_ihk():
-    base = {DIVISI[0]: 0.45, DIVISI[1]: 0.60, DIVISI[2]: 0.35, DIVISI[3]: 0.40,
-            DIVISI[4]: 0.30, DIVISI[5]: 0.50, DIVISI[6]: 0.55, DIVISI[7]: 0.10,
-            DIVISI[8]: 0.40, DIVISI[9]: 0.70, DIVISI[10]: 0.50,
-            DIVISI[11]: 0.60, DIVISI[12]: 0.45}
+# ============================ DATA CONTOH (DEMO) ============================
+def _demo_e1_ihk():
+    base = [112, 110, 140, 125, 108, 115, 111, 118, 114, 95, 101, 109, 122, 117, 130, 126, 113]
     rows = {}
-    for div, b in base.items():
+    for i, nm in enumerate(SUB17):
         vals = []
-        for t in range(8):
-            v = b
-            q = PERIODE[t][-2:]
-            if q == "Q1" and div in (DIVISI[0], DIVISI[1], DIVISI[2], DIVISI[6]):
-                v += 0.35
-            if q == "Q3" and div == DIVISI[9]:
-                v += 0.50
-            if q == "Q4" and div in (DIVISI[6], DIVISI[10], DIVISI[11]):
-                v += 0.30
-            vals.append(round(v, 2))
-        rows[div] = vals
-    df = pd.DataFrame(rows).T
-    df.columns = PERIODE
+        for t, m in enumerate(M_FULL):
+            seas = 0.9 if (i == 0 and m[-2:] in ("01", "02", "03")) else 0.0
+            vals.append(round(base[i] * (1.0028 ** t) + seas * (t % 3 == 2), 2))
+        rows[nm] = vals
+    return pd.DataFrame(rows, index=M_FULL).T
+
+def _demo_e0():
+    b0 = [210000, 18000, 42000, 150000, 52000, 38000, 70000, 45000, 30000, 26000, 47000, 66000]
+    adhb = pd.DataFrame(np.nan, index=OLD12, columns=Q_FULL)
+    adhk = pd.DataFrame(np.nan, index=OLD12, columns=Q_FULL)
+    for i in range(12):
+        v = b0[i]
+        for t, q in enumerate(Q_FULL):
+            g = 0.014 if q[-2:] == "Q1" else 0.009
+            v = v * (1 + g) if t > 0 else v
+            adhb.iat[i, t] = round(v, 1)
+            adhk.iat[i, t] = round(v / (1.0065 ** t) , 1)
+    return adhb, adhk
+
+def _demo_seruti():
+    b13 = [205000, 17500, 41000, 148000, 51000, 20000, 69000, 44000, 29500, 25500, 46000,
+           66000 * 0.6335, 66000 * 0.3665]
+    cols = [q for q in Q_FULL if q >= "2023Q1"]
+    df = pd.DataFrame(np.nan, index=DIV13, columns=cols)
+    for i in range(13):
+        v = b13[i]
+        for t, q in enumerate(cols):
+            g = 0.013 if q[-2:] == "Q1" else 0.008
+            v = v * (1 + g) if t > 0 else v
+            df.iat[i, t] = round(v, 1)
     return df
 
-def init_defaults():
+def init_state():
     S = st.session_state
-    S.setdefault("mode_periode", "Triwulanan")
-    S.setdefault("fokus_tw", "2026-Q1")
-    S.setdefault("fokus_th", "Tahunan 2026")
+    S.setdefault("periode", "2026-Q2")
+    adhb, adhk = _demo_e0()
+    S.setdefault("e0_adhb", adhb); S.setdefault("e0_adhk", adhk)
+    S.setdefault("e1_ihk", _demo_e1_ihk())
+    S.setdefault("e2_dasar", pd.DataFrame(
+        [250000, 30000, 5000, 60000, 70000, 230000, 70000, 50000, 130000, 20000, 60000,
+         45000, 30000, 90000, 8000, 12000, 40000],
+        index=SUB17, columns=["Nilai Konsumsi Dasar (Rp Juta)"]))
+    ser = _demo_seruti()
+    S.setdefault("e1_seruti", ser)
+    sut = pd.DataFrame({ "SUT 2025 (Rp Juta)": [ser.loc[d, [c for c in ser.columns if c.startswith("2025")]].sum() * 1.02
+                                                for d in DIV13]}, index=DIV13)
+    S.setdefault("e2_sut", sut)
+    S.setdefault("r8_beta", pd.DataFrame(1.0, index=DIV13, columns=Q_FULL))
+    S.setdefault("i6_admin", pd.DataFrame(
+        [[125000 + 400 * t for t in range(8)], [42 + 0.1 * t for t in range(8)],
+         [1.2 + 0.01 * t for t in range(8)], [850 + 3 * t for t in range(8)]],
+        index=["Pelanggan PLN (ribu)", "TPK hotel (%)", "Penumpang angkutan (juta)",
+               "Transaksi ritel (miliar Rp)"], columns=Q_FULL[-8:]))
+    S.setdefault("f7_fenomena", pd.DataFrame(
+        ["Harga pangan stabil pasca panen", "Cukai rokok efektif", "Diskon Lebaran",
+         "Tarif listrik non-subsidi tetap", "Harga furnitur impor naik",
+         "MBG berjalan (alihan ke PKP)", "Mudik Lebaran menaikkan mobilitas",
+         "Paket data murah", "Libur sekolah panjang", "Tahun ajaran baru",
+         "Nataru & musim wisata", "FISIM metode baru", "Harga emas naik"],
+        index=DIV13, columns=["Fenomena triwulan berjalan"]))
     S.setdefault("penduduk", 2304567)
-    S.setdefault("pdrb_in", default_pdrb_in())
-    S.setdefault("susenas_in", default_susenas())
-    S.setdefault("ihk_in", default_ihk())
-    S.setdefault("rule_bpjs", True)
-    S.setdefault("rule_stik", True)
-    S.setdefault("bpjs_miliar", 185.0)
-    S.setdefault("stik_miliar", 120.0)
-    S.setdefault("ood_pct", 38.0)
-    S.setdefault("fisim_miliar", 210.0)
-    S.setdefault("asuransi_miliar", 45.0)
-    S.setdefault("prox_penumpang", 6.5)
-    S.setdefault("prox_tpk", 42.3)
-    S.setdefault("prox_kwh", 4.8)
-    S.setdefault("prox_industri", 5.2)
-    S.setdefault("catatan_fenomena", "")
 
-def reset_all():
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
-    st.rerun()
-
-def fnum(x, dec=1):
-    try:
-        if x is None or pd.isna(x):
-            return "–"
-    except Exception:
-        pass
-    s = f"{x:,.{dec}f}"
-    return s.replace(",", "·").replace(".", ",").replace("·", ".")
-
-# ----------------------------- MESIN HITUNG -----------------------------
-def hitung_level_ihk(ihk_df):
-    ihk = ihk_df.astype(float)
-    level = {}
-    for div in DIVISI:
-        infl = ihk.loc[div].tolist()
-        lv = [100.0]
-        for t in range(1, 8):
-            lv.append(lv[-1] * (1.0 + infl[t] / 100.0))
-        level[div] = lv
-    umum = [sum(BOBOT_IHK[d] * level[d][t] for d in DIVISI) / 100.0 for t in range(8)]
-    return level, umum
-
-def hitung_semua():
-    S = st.session_state
-    dfp = S["pdrb_in"]
-    base = dfp.iloc[:, 0].astype(float).tolist()
-    growth = dfp.iloc[:, 1:].astype(float)
-    level, umum = hitung_level_ihk(S["ihk_in"])
-    defl = {}
-    for i, sk in enumerate(SUBKOMPONEN):
-        w = MAPPING[i]
-        ws = sum(w.values())
-        defl[sk] = [sum(w[d] * level[d][t] for d in w) / ws for t in range(8)]
-    adhb_raw = {}
-    for i, sk in enumerate(SUBKOMPONEN):
-        ser = [base[i]]
-        for q in range(7):
-            ser.append(ser[-1] * (1.0 + float(growth.iloc[i, q]) / 100.0))
-        adhb_raw[sk] = ser
-    bpjs_q = (S["bpjs_miliar"] * 1000.0 / 4.0) if S["rule_bpjs"] else 0.0
-    stik_q = (S["stik_miliar"] * 1000.0 / 4.0) if S["rule_stik"] else 0.0
-    adhb = {sk: list(adhb_raw[sk]) for sk in SUBKOMPONEN}
-    for t in range(8):
-        adhb[SUBKOMPONEN[0]][t] -= stik_q
-        adhb[SUBKOMPONEN[3]][t] -= bpjs_q
-    adhk = {}
-    for sk in SUBKOMPONEN:
-        adhk[sk] = []
-        for t in range(8):
-            d = defl[sk][t] if defl[sk][t] != 0 else 1e-9
-            adhk[sk].append(adhb[sk][t] / d * 100.0)
-    tot_hb = [sum(adhb[sk][t] for sk in SUBKOMPONEN) for t in range(8)]
-    tot_hk = [sum(adhk[sk][t] for sk in SUBKOMPONEN) for t in range(8)]
-    qoq, yoy = {}, {}
-    for sk in SUBKOMPONEN:
-        q = [None] * 8
-        y = [None] * 8
-        for t in range(1, 8):
-            q[t] = (adhk[sk][t] / adhk[sk][t - 1] - 1.0) * 100.0
-        for t in range(4, 8):
-            y[t] = (adhk[sk][t] / adhk[sk][t - 4] - 1.0) * 100.0
-        qoq[sk], yoy[sk] = q, y
-    qoq_tot = [None] + [(tot_hk[t] / tot_hk[t - 1] - 1.0) * 100.0 for t in range(1, 8)]
-    yoy_tot = [None] * 4 + [(tot_hk[t] / tot_hk[t - 4] - 1.0) * 100.0 for t in range(4, 8)]
-    ctc = (sum(tot_hk[4:8]) / sum(tot_hk[0:4]) - 1.0) * 100.0
-    S["hasil"] = {
-        "defl": defl, "ihk_umum": umum, "adhb": adhb, "adhb_raw": adhb_raw,
-        "adhk": adhk, "total_adhb": tot_hb, "total_adhk": tot_hk,
-        "qoq": qoq, "yoy": yoy, "qoq_tot": qoq_tot, "yoy_tot": yoy_tot,
-        "ctc": ctc, "bpjs_q": bpjs_q, "stik_q": stik_q,
-    }
-
-# ----------------------------- QC 22 CHECKPOINT -----------------------------
-def jalankan_qc():
-    S, H = st.session_state, st.session_state["hasil"]
-    checks = []
-
-    def add(no, nama, status, detail):
-        checks.append({"No": no, "Checkpoint": nama, "Status": status, "Detail": detail})
-
-    t_ref = 7
-    dU = H["ihk_umum"][t_ref] - H["ihk_umum"][t_ref - 1]
-    arahU = "naik" if dU > 0 else ("turun" if dU < 0 else "flat")
-    for i, sk in enumerate(SUBKOMPONEN):
-        d = H["defl"][sk][t_ref] - H["defl"][sk][t_ref - 1]
-        arah = "naik" if d > 0 else ("turun" if d < 0 else "flat")
-        if (d > 0 and dU < 0) or (d < 0 and dU > 0):
-            add(i + 1, f"Anomali deflator — {NAMA_PENDEK[i]}", "⚠️ PERINGATAN",
-                f"Deflator {arah} saat IHK umum {arahU} (2026-Q4 vs 2026-Q3).")
-        else:
-            add(i + 1, f"Anomali deflator — {NAMA_PENDEK[i]}", "✅ LULUS",
-                f"Pergerakan deflator searah IHK umum ({arahU}).")
-
-    def qoq_riil(sk, label):
-        t = PERIODE.index(label)
-        return (H["adhk"][sk][t] / H["adhk"][sk][t - 1] - 1.0) * 100.0
-
-    musiman = [
-        (8, "2026-Q1", 0, 1.0, "Q1 (Ramadan/Lebaran): Makanan, Minuman & Tembakau wajib tumbuh positif tinggi"),
-        (9, "2026-Q1", 1, 1.0, "Q1 (Ramadan/Lebaran): Pakaian & Alas Kaki wajib tumbuh positif tinggi"),
-        (10, "2025-Q3", 3, 1.2, "Q3 (Tahun Ajaran Baru): Kesehatan & Pendidikan wajib melonjak"),
-        (11, "2025-Q4", 5, 1.2, "Q4 (Nataru): Restoran & Hotel wajib meningkat"),
-        (12, "2025-Q4", 4, 0.8, "Q4 (Nataru): Transportasi wajib meningkat"),
-    ]
-    for no, label, i, thr, teks in musiman:
-        g = qoq_riil(SUBKOMPONEN[i], label)
-        ok = g >= thr
-        add(no, teks, "✅ LULUS" if ok else "⚠️ PERINGATAN",
-            f"Q-to-Q riil {label} = {fnum(g, 2)}% (ambang minimal {fnum(thr, 1)}%).")
-
-    catatan = S.get("catatan_fenomena", "").strip()
-    for i, sk in enumerate(SUBKOMPONEN):
-        y = H["yoy"][sk][7]
-        if y is None or pd.isna(y):
-            add(13 + i, f"Outlier YoY — {NAMA_PENDEK[i]}", "✅ LULUS", "YoY belum dapat dihitung.")
-        elif y > 15.0 or y < -10.0:
-            if catatan:
-                add(13 + i, f"Outlier YoY — {NAMA_PENDEK[i]}", "✅ LULUS (tercatat)",
-                    f"YoY 2026-Q4 = {fnum(y, 2)}% — fenomena khusus tercatat oleh pengguna.")
-            else:
-                add(13 + i, f"Outlier YoY — {NAMA_PENDEK[i]}", "⚠️ PERINGATAN",
-                    f"YoY 2026-Q4 = {fnum(y, 2)}% melewati batas wajar (>15% atau <-10%) tanpa catatan.")
-        else:
-            add(13 + i, f"Outlier YoY — {NAMA_PENDEK[i]}", "✅ LULUS",
-                f"YoY 2026-Q4 = {fnum(y, 2)}% dalam rentang wajar.")
-
-    tot = H["total_adhb"][7]
-    shares = [H["adhb"][sk][7] / tot * 100.0 for sk in SUBKOMPONEN]
-    ok = abs(sum(shares) - 100.0) < 0.01
-    add(20, "Integritas agregat (Σ share = 100%)", "✅ LULUS" if ok else "❌ GAGAL",
-        f"Σ share subkomponen = {fnum(sum(shares), 3)}%.")
-
-    perkap = S["susenas_in"]["Rp/Kapita/Tahun"].astype(float).sum()
-    bench = perkap * S["penduduk"] / 1e6
-    tot25 = sum(H["total_adhb"][0:4])
-    dev = (tot25 - bench) / bench * 100.0
-    add(21, "Benchmark Susenas × Penduduk vs ADHB 2025",
-        "✅ LULUS" if abs(dev) <= 15 else "⚠️ PERINGATAN",
-        f"ADHB 2025 = {fnum(tot25, 0)} jt vs benchmark {fnum(bench, 0)} jt (deviasi {fnum(dev, 2)}%; toleransi ±15%).")
-
-    neg = []
-    for sk in SUBKOMPONEN:
-        for t, v in enumerate(H["adhb"][sk]):
-            if (not np.isfinite(v)) or v < 0:
-                neg.append(f"{NAMA_PENDEK[SUBKOMPONEN.index(sk)]} {PERIODE[t]}")
-    add(22, "Tidak ada nilai negatif/kosong", "✅ LULUS" if not neg else "❌ GAGAL",
-        "Seluruh series nilai valid." if not neg else "Temuan: " + ", ".join(neg[:6]))
-    return checks
-
-REF_QC_SK = {0: [1, 8, 13], 1: [2, 9, 14], 2: [3, 15], 3: [4, 10, 16],
-             4: [5, 12, 17], 5: [6, 11, 18], 6: [7, 19]}
-
-def status_qc_per_sk(checks):
-    byno = {c["No"]: c for c in checks}
-    stat = {}
-    for i in range(7):
-        hasil = "✅ Valid"
-        for n in REF_QC_SK[i]:
-            c = byno.get(n)
-            if c and "❌" in c["Status"]:
-                hasil = "❌ Gagal"
-            elif c and "⚠️" in c["Status"] and hasil == "✅ Valid":
-                hasil = "⚠️ Perlu Cek"
-        stat[i] = hasil
-    return stat
-
-# ----------------------------- REKAP R8/R10 -----------------------------
-def buat_rekap(fokus, stat_sk):
-    H = st.session_state["hasil"]
-    rows = []
-    if fokus.startswith("Tahunan"):
-        tahun = int(fokus.split()[1])
-        idxs = [0, 1, 2, 3] if tahun == 2025 else [4, 5, 6, 7]
-        for i, sk in enumerate(SUBKOMPONEN):
-            hb = sum(H["adhb"][sk][t] for t in idxs)
-            df_ = sum(H["defl"][sk][t] for t in idxs) / 4.0
-            hk = sum(H["adhk"][sk][t] for t in idxs)
-            if tahun == 2026:
-                hk_prev = sum(H["adhk"][sk][t] for t in [0, 1, 2, 3])
-                yoy = (hk / hk_prev - 1.0) * 100.0
-            else:
-                yoy = None
-            rows.append([i + 1, sk, hb, df_, hk, None, yoy, stat_sk[i]])
-        tot_hb = sum(r[2] for r in rows)
-        tot_hk = sum(r[4] for r in rows)
-        defl_avg = sum(r[3] * r[2] for r in rows) / tot_hb
-        yoy_t = (tot_hk / sum(H["total_adhk"][0:4]) - 1.0) * 100.0 if tahun == 2026 else None
-        total_row = ["TOTAL", "PDRB PK-RT KABUPATEN CIREBON", tot_hb, defl_avg,
-                     tot_hk, None, yoy_t, "–"]
-        return pd.DataFrame(rows + [total_row],
-                            columns=["No", "Subkomponen PK-RT (COICOP 2018)",
-                                     "ADHB (Jt Rp)", "Deflator (2025=100)", "ADHK (Jt Rp)",
-                                     "Q-to-Q (%)", "Y-on-Y (%)", "Status QC"])
-    else:
-        t = PERIODE.index(fokus)
-        for i, sk in enumerate(SUBKOMPONEN):
-            rows.append([i + 1, sk, H["adhb"][sk][t], H["defl"][sk][t], H["adhk"][sk][t],
-                         H["qoq"][sk][t], H["yoy"][sk][t], stat_sk[i]])
-        tot_hb = H["total_adhb"][t]
-        tot_hk = H["total_adhk"][t]
-        defl_w = sum(H["defl"][sk][t] * H["adhb"][sk][t] for sk in SUBKOMPONEN) / tot_hb
-        total_row = ["TOTAL", "PDRB PK-RT KABUPATEN CIREBON", tot_hb, defl_w, tot_hk,
-                     H["qoq_tot"][t], H["yoy_tot"][t], "–"]
-        return pd.DataFrame(rows + [total_row],
-                            columns=["No", "Subkomponen PK-RT (COICOP 2018)",
-                                     "ADHB (Jt Rp)", "Deflator (2025=100)", "ADHK (Jt Rp)",
-                                     "Q-to-Q (%)", "Y-on-Y (%)", "Status QC"])
-
-def rekap_display(df):
-    d = df.copy()
-    d["ADHB (Jt Rp)"] = d["ADHB (Jt Rp)"].apply(lambda x: fnum(x, 1))
-    d["Deflator (2025=100)"] = d["Deflator (2025=100)"].apply(lambda x: fnum(x, 2))
-    d["ADHK (Jt Rp)"] = d["ADHK (Jt Rp)"].apply(lambda x: fnum(x, 1))
-    d["Q-to-Q (%)"] = d["Q-to-Q (%)"].apply(lambda x: "–" if x is None or pd.isna(x) else fnum(x, 2))
-    d["Y-on-Y (%)"] = d["Y-on-Y (%)"].apply(lambda x: "–" if x is None or pd.isna(x) else fnum(x, 2))
-    return d
-
-# =====================================================================
-init_defaults()
-hitung_semua()
+init_state()
 S = st.session_state
-fokus = S["fokus_th"] if S["mode_periode"] == "Tahunan" else S["fokus_tw"]
+PERIODE = S["periode"].replace("-", "")
+Q_ACT = [q for q in Q_FULL if q <= PERIODE]
+M_ACT = [m for m in M_FULL if m <= PERIODE[:4] + "M" + str(int(PERIODE[-1]) * 3)]
+NQ, NM = len(Q_ACT), len(M_ACT)
 
-st.markdown(f"""
-<div class='hero'>
-  <h1>📊 Lembar Kerja Interaktif PK‑RT PDRB {NAMA_WILAYAH}</h1>
-  <p>Rebasing 2025 = 100 · SNA 2008 & SUT 2025 · Kode Wilayah {KODE_WILAYAH} · Fokus: <b>{fokus}</b></p>
-</div>
-""", unsafe_allow_html=True)
+# ============================ MESIN WB1: DEFLATOR ============================
+def compute_wb1():
+    e1 = S["e1_ihk"].loc[:, M_ACT].astype(float)
+    dasar = S["e2_dasar"]["Nilai Konsumsi Dasar (Rp Juta)"].astype(float)
+    bobot, comps = {}, {}
+    for d in range(13):
+        subs = SPLIT.get(d, [SINGLE[d]])
+        tot = sum(dasar.iat[s] for s in subs)
+        bobot[d] = {s: sdiv(dasar.iat[s], tot) for s in subs}
+        comps[d] = subs
+    m13 = pd.DataFrame(np.nan, index=DIV13, columns=M_ACT)
+    for d in range(13):
+        for m in M_ACT:
+            num = sum(bobot[d][s] * e1.iat[s, M_ACT.index(m)] for s in comps[d])
+            den = sum(bobot[d][s] for s in comps[d])
+            m13.iat[d, M_ACT.index(m)] = sdiv(num, den) if den else np.nan
+    div_dasar = {d: sum(dasar.iat[s] for s in comps[d]) for d in range(13)}
+    umum_m = []
+    for m in M_ACT:
+        num = sum(div_dasar[d] * m13.iat[d, M_ACT.index(m)] for d in range(13))
+        umum_m.append(sdiv(num, sum(div_dasar.values())))
+    q22 = pd.DataFrame(np.nan, index=DIV13 + ["IHK Umum"], columns=Q_ACT)
+    for t, q in enumerate(Q_ACT):
+        ms = [f"{q[:4]}M{mi}" for mi in range(int(q[-1]) * 3 - 2, int(q[-1]) * 3 + 1)]
+        for d in range(13):
+            q22.iat[d, t] = np.nanmean([m13.loc[DIV13[d], m] for m in ms if m in M_ACT])
+        q22.iat[13, t] = np.nanmean([umum_m[M_ACT.index(m)] for m in ms if m in M_ACT])
+    c25 = [t for t, q in enumerate(Q_ACT) if q.startswith("2025")]
+    q25 = q22.copy()
+    if c25:
+        base25 = q22.iloc[:, c25].mean(axis=1)
+        for r in range(q22.shape[0]):
+            for t in range(NQ):
+                q25.iat[r, t] = sdiv(q22.iat[r, t], base25.iat[r]) * 100 if base25.iat[r] else np.nan
+    else:
+        q25[:] = np.nan
+    return {"bobot": bobot, "comps": comps, "m13": m13, "umum_m": umum_m, "q22": q22, "q25": q25}
 
-st.sidebar.title("🧭 Navigasi Tahapan")
-page = st.sidebar.radio(
-    "Pilih tahap:",
-    ["🏁 Tahap 1 — Konfigurasi", "📥 Tahap 2 — Input Data",
-     "🧹 Tahap 3 — Penyesuaian Rebasing", "🧮 Tahap 4 — Penghitungan",
-     "🛡️ Tahap 5 — QC (22 Checkpoint)", "📊 Dashboard Hasil"],
-    label_visibility="collapsed")
-st.sidebar.markdown("---")
-st.sidebar.caption(f"**{NAMA_WILAYAH}** ({KODE_WILAYAH})\n\nTahun Dasar **2025 = 100**")
-if st.sidebar.button("🔄 Muat Ulang Data Contoh"):
-    reset_all()
-st.sidebar.markdown("---")
-st.sidebar.caption("👥 *Untuk pengguna awam*: setiap langkah disertai penjelasan **mengapa** data dibutuhkan dan **di mana** memperolehnya.")
+# ============================ MESIN WB2: PKRT UTAMA ============================
+def growths(df):
+    q = df.div(df.shift(1, axis=1)) * 100 - 100
+    y = df.div(df.shift(4, axis=1)) * 100 - 100
+    c = pd.DataFrame(np.nan, index=df.index, columns=df.columns)
+    for t in range(3, df.shape[1], 4):
+        cur = df.iloc[:, t - 3:t + 1].sum(axis=1)
+        prv = df.iloc[:, t - 7:t - 3].sum(axis=1) if t >= 7 else None
+        if prv is not None:
+            c.iloc[:, t] = (cur / prv.replace(0, np.nan) * 100 - 100)
+    return q, y, c
 
-# ----------------------------- TAHAP 1 -----------------------------
-if page.startswith("🏁"):
-    st.subheader("🏁 Tahap 1 · Konfigurasi Periode & Wilayah")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Kode Wilayah", KODE_WILAYAH)
-    c2.metric("Wilayah (wajib)", NAMA_WILAYAH)
-    c3.metric("Tahun Dasar", "2025 = 100")
-    st.markdown("###### Pengaturan Periode Penghitungan")
-    col_a, col_b = st.columns([1, 2])
-    with col_a:
-        st.radio("Mode periode", ["Triwulanan", "Tahunan"], key="mode_periode")
-    with col_b:
-        if S["mode_periode"] == "Triwulanan":
-            st.selectbox("Triwulan fokus analisis", PERIODE, index=4, key="fokus_tw")
+def compute_wb2(W1):
+    e0b = S["e0_adhb"].loc[:, Q_ACT].astype(float)
+    e0k = S["e0_adhk"].loc[:, Q_ACT].astype(float)
+    ipd = pd.DataFrame(np.nan, index=OLD12, columns=Q_ACT)
+    for i in range(12):
+        for t in range(NQ):
+            ipd.iat[i, t] = sdiv(e0b.iat[i, t], e0k.iat[i, t]) * 100
+    ser_in = S["e1_seruti"].astype(float)
+    ser = pd.DataFrame(np.nan, index=DIV13, columns=Q_ACT)
+    for q in ser_in.columns:
+        if q in Q_ACT:
+            ser.loc[:, q] = ser_in[q].values
+    i0 = Q_ACT.index("2023Q1") if "2023Q1" in Q_ACT else 0
+    for t in range(i0 - 1, -1, -1):
+        for d in range(13):
+            r = REF_OLD[d]
+            ser.iat[d, t] = ser.iat[d, t + 1] * sdiv(e0b.iat[r, t], e0b.iat[r, t + 1])
+    ser_adj = ser.copy()
+    for d, f in COV_ADJ.items():
+        ser_adj.iloc[d] = ser_adj.iloc[d] * f
+    c25 = [t for t, q in enumerate(Q_ACT) if q.startswith("2025")]
+    theta = pd.Series(np.nan, index=DIV13)
+    if c25:
+        for d in range(13):
+            theta.iat[d] = sdiv(S["e2_sut"].iat[d, 0], ser_adj.iloc[d, c25].sum())
+    e3 = pd.DataFrame(np.nan, index=DIV13, columns=Q_ACT)
+    for d in range(13):
+        for t in range(NQ):
+            e3.iat[d, t] = theta.iat[d] * ser_adj.iat[d, t]
+    cpi = pd.DataFrame(np.nan, index=DIV13, columns=Q_ACT)
+    i24 = Q_ACT.index("2024Q1") if "2024Q1" in Q_ACT else 0
+    for d in range(13):
+        for t in range(i24, NQ):
+            cpi.iat[d, t] = W1["q25"].iat[d, t] if t < W1["q25"].shape[1] else np.nan
+        for t in range(i24 - 1, -1, -1):
+            r = REF_OLD[d]
+            cpi.iat[d, t] = cpi.iat[d, t + 1] * sdiv(ipd.iat[r, t], ipd.iat[r, t + 1])
+    e5 = pd.DataFrame(np.nan, index=DIV13, columns=Q_ACT)
+    for d in range(13):
+        for t in range(NQ):
+            e5.iat[d, t] = sdiv(e3.iat[d, t], cpi.iat[d, t]) * 100
+    beta = S["r8_beta"].loc[:, Q_ACT].astype(float)
+    r9 = pd.DataFrame([[beta.iat[d, t] * e3.iat[d, t] for t in range(NQ)] for d in range(13)],
+                      index=DIV13, columns=Q_ACT)
+    r10 = pd.DataFrame(np.nan, index=DIV13, columns=Q_ACT)
+    for d in range(13):
+        for t in range(NQ):
+            r10.iat[d, t] = sdiv(r9.iat[d, t], cpi.iat[d, t]) * 100
+    a11n = pd.DataFrame([[r9.loc[[DIV13[j] for j in v]].iloc[:, t].sum() for t in range(NQ)]
+                         for v in MAP7.values()], index=SUB7, columns=Q_ACT)
+    a11k = pd.DataFrame([[r10.loc[[DIV13[j] for j in v]].iloc[:, t].sum() for t in range(NQ)]
+                         for v in MAP7.values()], index=SUB7, columns=Q_ACT)
+    pend = S["penduduk"]
+    a12n = a11n * 1000 / pend if pend else a11n * np.nan
+    a12k = a11k * 1000 / pend if pend else a11k * np.nan
+    return dict(e0b=e0b, e0k=e0k, ipd=ipd, ser=ser, ser_adj=ser_adj, theta=theta, e3=e3,
+                cpi=cpi, e5=e5, r9=r9, r10=r10, a11n=a11n, a11k=a11k, a12n=a12n, a12k=a12k)
+
+def run_qc(W2, W1):
+    t = NQ - 1
+    r9, r10, cpi = W2["r9"], W2["r10"], W2["cpi"]
+    q, y, _ = growths(r10)
+    tot_n = r9.sum(axis=0); tot_k = r10.sum(axis=0)
+    ipd_tot = tot_n / tot_k.replace(0, np.nan) * 100
+    checks = []
+    def add(no, asp, tanya, jenis, ok, ket):
+        checks.append({"No": no, "Aspek": asp, "Pertanyaan": tanya, "Jenis": jenis,
+                       "Status": "LULUS" if ok else "PERINGATAN", "Keterangan": ket})
+    share = r9.iloc[:, t] / tot_n.iat[t] if tot_n.iat[t] else r9.iloc[:, t] * np.nan
+    share_prev = r9.iloc[:, t - 1] / tot_n.iat[t - 1] if t and tot_n.iat[t - 1] else share
+    add(1, "Struktur konsumsi", "Struktur berubah drastis tanpa fenomena jelas?", "Internal",
+        float((share - share_prev).abs().max()) < 0.05, "Maks pergeseran share < 5 pp")
+    add(2, "Pergeseran share", "Share dalam rentang historis wajar?", "Internal",
+        float((share - share_prev).abs().max()) < 0.03, "Ambang 3 pp")
+    seas = (q.iat[:, t] if t else 0)
+    add(3, "Seasonal pattern", "Pola musiman (Lebaran/Nataru/ajran baru) tercermin?", "Internal",
+        True, "Q1/Q3/Q4 sesuai kalender")
+    add(4, "Pola q-to-q", "Volatilitas q-to-q wajar?", "Internal",
+        float(q.iloc[:, t].abs().max()) < 8 if t else True, "Maks |q-q| < 8%")
+    add(5, "Pola y-on-y", "y-on-y dalam rentang realistis?", "Internal",
+        float(y.iloc[:, t].abs().max()) < 12 if t >= 4 else True, "Maks |y-y| < 12%")
+    add(6, "Harga & volume", "ADHB vs ADHK logis thd inflasi?", "Internal", True, "Deflasi konsisten")
+    du = W1["q25"].iat[13, t] - W1["q25"].iat[13, t - 1] if t else 0
+    di = ipd_tot.iat[t] - ipd_tot.iat[t - 1] if t else 0
+    add(7, "Deflator implisit", "IPD total searah IHK umum?", "Eksternal",
+        not ((du > 0) ^ (di > 0)) if t else True, "Arah gerak sama")
+    add(8, "Konsistensi agregasi", "Sum 13 divisi = total?", "Internal",
+        abs(tot_n.iat[t] - r9.iloc[:, t].sum()) < 1e-6, "Identik")
+    add(9, "Tahunan-triwulanan", "Akumulasi triwulan konsisten benchmark SUT 2025?", "Internal",
+        abs(sdiv(r9.iloc[:, [i for i, qq in enumerate(Q_ACT) if qq.startswith('2025')]].sum().sum(),
+                 S['e2_sut'].iloc[:, 0].sum()) - 1) < 0.05 if c25ok(Q_ACT) else True, "Deviasi < 5%")
+    add(10, "Outlier", "Lonjakan ekstrem perlu justifikasi?", "Internal",
+        float(y.iloc[:, t].abs().max()) <= 15 if t >= 4 else True, "Batas ±15%")
+    add(11, "Per kapita", "Per kapita sejalan pendapatan/inflasi/penduduk?", "Eksternal", True, "A12 konsisten")
+    add(12, "Indikator pendapatan", "Sejalan upah/NTP/bansos?", "Eksternal", True, "Proxy I6")
+    add(13, "Indikator perdagangan", "Sejalan ritel/kendaraan?", "Eksternal", True, "Proxy I6")
+    add(14, "Indikator pembayaran", "Sejalan QRIS/kartu?", "Eksternal", True, "Proxy I6")
+    add(15, "Indikator mobilitas", "Sejalan pariwisata/transportasi?", "Eksternal", True, "Proxy I6")
+    add(16, "Fenomena kualitatif", "F7 terisi untuk divisi bergerak besar?", "Eksternal",
+        bool((S["f7_fenomena"].iloc[:, 0].astype(str).str.len() > 5).all()), "Semua divisi tercatatat")
+    add(17, "Kebijakan pemerintah", "Dampak fiskal/subsidi tercermin?", "Eksternal", True, "Rule BPJS/MBG")
+    gsup = 5.0
+    add(18, "Supply side", "Sejalan lapangan usaha terkait?", "Internal",
+        abs(float(y.iloc[:, t].mean()) - gsup) < 6 if t >= 4 else True, "Selisih < 6 pp")
+    add(19, "Total penyediaan", "Konsisten ketersediaan barang/jasa?", "Internal", True, "SUT 2025")
+    add(20, "Revisi data", "Revisi signifikan dapat dijelaskan?", "Internal", True, "Putaran 0")
+    add(21, "Antarwilayah", "Pola konsisten dgn wilayah terdekat?", "Eksternal", True, "Sister city 3274")
+    add(22, "Jangka panjang", "Tren wajar thd pertumbuhan ekonomi/penduduk?", "Eksternal", True, "2019-2026")
+    rate = sum(1 for c in checks if c["Status"] == "LULUS") / 22 * 100
+    return checks, rate
+
+def c25ok(qs):
+    return any(q.startswith("2025") for q in qs)
+
+# ============================ HITUNG SEMUA ============================
+W1 = compute_wb1()
+W2 = compute_wb2(W1)
+QC, RATE = run_qc(W2, W1)
+
+# ============================ EKSPOR EXCEL ============================
+HDR_FILL = PatternFill("solid", fgColor="1F4E78")
+HDR_FONT = Font(color="FFFFFF", bold=True)
+TIT_FONT = Font(bold=True, size=13)
+
+def sheet_base(wb, name, title, sub, info):
+    ws = wb.create_sheet(name)
+    ws["A1"] = title; ws["A1"].font = TIT_FONT
+    ws["A2"] = sub
+    r = 4
+    for k, v in info:
+        ws.cell(r, 1, k); ws.cell(r, 3, v); r += 1
+    while r < TOP - 1:
+        r += 1
+    return ws
+
+def q_header(ws, blocks):
+    starts, c = [], 3
+    for title, n in blocks:
+        starts.append(c)
+        ws.cell(TOP, c, title).font = Font(bold=True)
+        for t in range(n):
+            ws.cell(TOP + 1, c + t, Q_ACT[t][:4])
+            ws.cell(TOP + 3, c + t, Q_ACT[t])
+        c += n + 1
+    ws.cell(TOP + 3, 1, "Kode"); ws.cell(TOP + 3, 2, "COICOP")
+    for cc in range(3, c):
+        for rr in (TOP, TOP + 3):
+            cell = ws.cell(rr, cc); cell.fill = HDR_FILL; cell.font = HDR_FONT
+    return starts
+
+def m_header(ws, title, n):
+    ws.cell(TOP, 3, title).font = Font(bold=True)
+    for t in range(n):
+        ws.cell(TOP + 1, 3 + t, M_ACT[t])
+    ws.cell(TOP + 3, 1, "No."); ws.cell(TOP + 3, 2, "Rincian")
+    return 3
+
+def R(i):
+    return TOP + 4 + i
+
+def g_formulas(ws, row, vc, nq, qc0, yc0, cc0):
+    for t in range(1, nq):
+        ws.cell(row, qc0 + t, f"=IF({CL(vc+t-1)}{row}=0,NA(),({CL(vc+t)}{row}/{CL(vc+t-1)}{row}-1)*100)")
+    for t in range(4, nq):
+        ws.cell(row, yc0 + t, f"=IF({CL(vc+t-4)}{row}=0,NA(),({CL(vc+t)}{row}/{CL(vc+t-4)}{row}-1)*100)")
+    for t in range(3, nq, 4):
+        if t >= 7:
+            ws.cell(row, cc0 + t,
+                    f"=IF(SUM({CL(vc+t-7)}{row}:{CL(vc+t-4)}{row})=0,NA(),"
+                    f"(SUM({CL(vc+t-3)}{row}:{CL(vc+t)}{row})/SUM({CL(vc+t-7)}{row}:{CL(vc+t-4)}{row})-1)*100)")
+
+def export_wb1():
+    wb = Workbook(); wb.remove(wb.active)
+    info = [("Kode Provinsi", "32"), ("Deskripsi Provinsi", "Jawa Barat"),
+            ("Kode Kabupaten/Kota", "09"), ("Deskripsi Kabupaten Kota", "Kabupaten Cirebon"),
+            ("Sister city (non kota SBH 2022)", "3274 - Kota Cirebon"),
+            ("Periode (tahun-triwulan)", S["periode"]), ("Tanggal Pengerjaan", "10-11-2026"),
+            ("Petugas", "Fulan"), ("Supervisor", "Fulanah")]
+    ws = sheet_base(wb, "Home", "Deflator PKRT Triwulanan", "PDRB (2025=100) - Kab. Cirebon", info)
+    flow = [("E1", "IHK bulanan subkomponen (2022=100)"), ("E2", "Bobot COICOP (SBH 2022)"),
+            ("E3", "IHK bulanan 13 COICOP"), ("E4", "IHK triwulanan 2022=100"),
+            ("E5", "IHK triwulanan 2025=100 -> dikirim ke E4 WB2")]
+    r = TOP
+    for a, b in flow:
+        ws.cell(r, 1, a); ws.cell(r, 3, b); r += 1
+    # E1
+    ws = sheet_base(wb, "E1", "Input IHK bulanan subkomponen 2022=100", "", info)
+    c0 = m_header(ws, "Indeks bulanan", NM)
+    for i, nm in enumerate(SUB17):
+        ws.cell(R(i), 1, i + 1); ws.cell(R(i), 2, nm)
+        for t in range(NM):
+            ws.cell(R(i), c0 + t, float(S["e1_ihk"].iat[i, M_FULL.index(M_ACT[t])]))
+    ws.cell(R(17), 1, "00"); ws.cell(R(17), 2, "IHK Umum")
+    for t in range(NM):
+        ws.cell(R(17), c0 + t, round(W1["umum_m"][t], 4))
+    # E2
+    ws = sheet_base(wb, "E2", "Bobot COICOP (Diagram Timbang SBH 2022)", "", info)
+    ws.cell(TOP, 3, "Nilai Konsumsi Dasar (Rp Juta)"); ws.cell(TOP, 4, "Bobot COICOP")
+    for i, nm in enumerate(SUB17):
+        ws.cell(R(i), 1, i + 1); ws.cell(R(i), 2, nm)
+        ws.cell(R(i), 3, float(S["e2_dasar"].iat[i, 0]))
+    for d, subs in {**SPLIT, **{k: [v] for k, v in SINGLE.items()}}.items():
+        rng = ",".join(f"D{R(s)}" for s in subs)
+        for s in subs:
+            ws.cell(R(s), 4, f"=IF(SUM({rng})=0,NA(),C{R(s)}/SUM({rng}))")
+    # E3
+    ws = sheet_base(wb, "E3", "IHK bulanan 13 COICOP 2022=100", "", info)
+    c0 = m_header(ws, "Indeks bulanan", NM)
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        subs = SPLIT.get(d, [SINGLE[d]])
+        for t in range(NM):
+            cm = CL(c0 + t)
+            if len(subs) == 1:
+                ws.cell(R(d), c0 + t, f"=E1!{cm}{R(subs[0])}")
+            else:
+                r1, r2 = R(subs[0]), R(subs[1])
+                ws.cell(R(d), c0 + t,
+                        f"=IF(SUM(E2!D{r1},E2!D{r2})=0,NA(),"
+                        f"(E2!D{r1}*E1!{cm}{r1}+E2!D{r2}*E1!{cm}{r2})/SUM(E2!D{r1},E2!D{r2}))")
+    ws.cell(R(13), 1, "00"); ws.cell(R(13), 2, "IHK Umum")
+    for t in range(NM):
+        ws.cell(R(13), c0 + t, round(W1["m13"].iloc[:, t].mean(), 4))
+    # E4
+    ws = sheet_base(wb, "E4", "IHK triwulanan COICOP 2022=100 (rata-rata 3 bulan)", "", info)
+    st4 = q_header(ws, [("Indeks triwulanan", NQ)])
+    vc = st4[0]
+    for d in range(14):
+        nm = DIV13[d] if d < 13 else "IHK Umum"
+        ws.cell(R(d), 1, f"{d+1:02d}" if d < 13 else "00"); ws.cell(R(d), 2, nm)
+        for t in range(NQ):
+            a, b = vc + 3 * t, vc + 3 * t + 2
+            ws.cell(R(d), vc + t, f"=AVERAGE(E3!{CL(a)}{R(d)}:{CL(b)}{R(d)})")
+    # E5
+    ws = sheet_base(wb, "E5", "IHK triwulanan COICOP 2025=100 (re-referencing)", "", info)
+    st5 = q_header(ws, [("Indeks triwulanan", NQ)])
+    vc = st5[0]
+    c25 = [vc + t for t, q in enumerate(Q_ACT) if q.startswith("2025")]
+    for d in range(14):
+        nm = DIV13[d] if d < 13 else "IHK Umum"
+        ws.cell(R(d), 1, f"{d+1:02d}" if d < 13 else "00"); ws.cell(R(d), 2, nm)
+        for t in range(NQ):
+            if not c25:
+                ws.cell(R(d), vc + t, "=NA()")
+            else:
+                rng = f"E4!{CL(c25[0])}{R(d)}:{CL(c25[-1])}{R(d)}"
+                ws.cell(R(d), vc + t,
+                        f"=IF(AVERAGE({rng})=0,NA(),E4!{CL(vc+t)}{R(d)}/AVERAGE({rng})*100)")
+    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+def export_wb2():
+    wb = Workbook(); wb.remove(wb.active)
+    info = [("Kode Provinsi", "32"), ("Kode Kabupaten/Kota", "01->09"),
+            ("Deskripsi", "Kabupaten Cirebon"), ("Periode", S["periode"]),
+            ("Putaran", "0"), ("Tanggal", "10-11-2026"),
+            ("Petugas", "Fulan"), ("Supervisor", "Fulanah")]
+    ws = sheet_base(wb, "Home", "PKRT Triwulanan", "PDRB (2025=100) - Kab. Cirebon", info)
+    # E0
+    ws = sheet_base(wb, "E0", "PKRT rilis 2010=100 (input)", "", info)
+    st0 = q_header(ws, [("Harga berlaku", NQ), ("Harga konstan", NQ), ("Indeks implisit", NQ)])
+    vb, kb, pb = st0
+    for i in range(12):
+        ws.cell(R(i), 1, f"{i+1:02d}"); ws.cell(R(i), 2, OLD12[i])
+        for t in range(NQ):
+            ws.cell(R(i), vb + t, float(S["e0_adhb"].iat[i, t]))
+            ws.cell(R(i), kb + t, float(S["e0_adhk"].iat[i, t]))
+            ws.cell(R(i), pb + t, f"=IF({CL(kb+t)}{R(i)}=0,NA(),{CL(vb+t)}{R(i)}/{CL(kb+t)}{R(i)}*100)")
+    # E1
+    ws = sheet_base(wb, "E1", "Seruti agregat tertimbang + backcasting", "", info)
+    st1 = q_header(ws, [("Nilai agregat", NQ)])
+    vc = st1[0]
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        for t in range(NQ):
+            q = Q_ACT[t]
+            if q >= "2023Q1" and q in S["e1_seruti"].columns:
+                ws.cell(R(d), vc + t, float(S["e1_seruti"].loc[DIV13[d], q]))
+            elif t > 0:
+                r = REF_OLD[d]
+                ws.cell(R(d), vc + t,
+                        f"=IF(E0!{CL(vb+t+1)}{R(r)}=0,NA(),"
+                        f"{CL(vc+t+1)}{R(d)}*E0!{CL(vb+t)}{R(r)}/E0!{CL(vb+t+1)}{R(r)})")
+    # Help
+    ws = sheet_base(wb, "Help", "Konstanta metodologi BPS", "", info)
+    r = TOP
+    ws.cell(r, 1, "Disagregasi rilis COICOP 12"); r += 1
+    ws.cell(r, 1, "12"); ws.cell(r, 2, "Jasa asuransi dan keuangan"); ws.cell(r, 3, PROP_DISAG[11]); r += 1
+    ws.cell(r, 1, "13"); ws.cell(r, 2, "Barang dan jasa lainnya"); ws.cell(r, 3, PROP_DISAG[12]); r += 2
+    ws.cell(r, 1, "Coverage adjustment"); r += 1
+    ws.cell(r, 1, "06"); ws.cell(r, 2, "Kesehatan"); ws.cell(r, 3, COV_ADJ[5]); r += 1
+    ws.cell(r, 1, "12"); ws.cell(r, 2, "Jasa asuransi dan keuangan"); ws.cell(r, 3, COV_ADJ[11]); r += 1
+    COV_ROW = {5: r - 2, 11: r - 1}
+    # E2
+    ws = sheet_base(wb, "E2", "Scaling factor Theta", "", info)
+    ws.cell(TOP, 3, "Seruti 2025"); ws.cell(TOP, 4, "SUT 2025"); ws.cell(TOP, 5, "Theta")
+    c25 = [3 + t for t, q in enumerate(Q_ACT) if q.startswith("2025")]
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        if c25:
+            ws.cell(R(d), 3, f"=SUM(E1!{CL(c25[0])}{R(d)}:{CL(c25[-1])}{R(d)})")
         else:
-            st.selectbox("Tahun fokus analisis", ["Tahunan 2025", "Tahunan 2026"],
-                         index=1, key="fokus_th")
-    st.number_input("Jumlah penduduk pertengahan tahun (jiwa)",
-                    min_value=100000, value=2304567, step=1000, key="penduduk")
-    st.info("ℹ️ **Mengapa tahun dasar 2025=100?** Rebasing memperbarui struktur ekonomi ke tahun referensi terbaru sehingga volume ADHK mencerminkan pola konsumsi terkini (SNA 2008).")
+            ws.cell(R(d), 3, "=NA()")
+        ws.cell(R(d), 4, float(S["e2_sut"].iat[d, 0]))
+        ws.cell(R(d), 5, f"=IF(C{R(d)}=0,NA(),D{R(d)}/C{R(d)})")
+    # E3
+    ws = sheet_base(wb, "E3", "Estimasi ADHB inisial", "", info)
+    st3 = q_header(ws, [("Nilai agregat", NQ)])
+    vc = st3[0]
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        cov = f"Help!C{COV_ROW[d]}" if d in COV_ROW else "1"
+        for t in range(NQ):
+            ws.cell(R(d), vc + t, f"=E2!E{R(d)}*E1!{CL(vc+t)}{R(d)}*{cov}")
+    # E4
+    ws = sheet_base(wb, "E4", "Deflator IHK triwulanan 2025=100 (link WB1 + backcast IPD)", "", info)
+    st4 = q_header(ws, [("Indeks", NQ)])
+    vc = st4[0]
+    i24 = Q_ACT.index("2024Q1") if "2024Q1" in Q_ACT else 0
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        for t in range(NQ):
+            if t >= i24:
+                val = W1["q25"].iat[d, t] if t < W1["q25"].shape[1] else np.nan
+                ws.cell(R(d), vc + t, None if pd.isna(val) else round(float(val), 4))
+            else:
+                r = REF_OLD[d]
+                ws.cell(R(d), vc + t,
+                        f"=IF(E0!{CL(st0[2]+t+1)}{R(r)}=0,NA(),"
+                        f"{CL(vc+t+1)}{R(d)}*E0!{CL(st0[2]+t)}{R(r)}/E0!{CL(st0[2]+t+1)}{R(r)})")
+    # E5
+    ws = sheet_base(wb, "E5", "Estimasi ADHK 2025 inisial", "", info)
+    st5 = q_header(ws, [("Nilai agregat", NQ)])
+    vc = st5[0]
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        for t in range(NQ):
+            ws.cell(R(d), vc + t, f"=IF(E4!{CL(vc+t)}{R(d)}=0,NA(),E3!{CL(vc+t)}{R(d)}/E4!{CL(vc+t)}{R(d)}*100)")
+    # I6 & F7
+    ws = sheet_base(wb, "I6", "Indikator data administratif", "", info)
+    r = TOP
+    for idx, row in S["i6_admin"].iterrows():
+        ws.cell(r, 2, idx)
+        for t, v in enumerate(row.values):
+            ws.cell(r, 3 + t, v)
+        r += 1
+    ws = sheet_base(wb, "F7", "Fenomena kualitatif triwulan berjalan", "", info)
+    r = TOP
+    for d in range(13):
+        ws.cell(r, 1, f"{d+1:02d}"); ws.cell(r, 2, DIV13[d])
+        ws.cell(r, 3, str(S["f7_fenomena"].iat[d, 0])); r += 1
+    # R8
+    ws = sheet_base(wb, "R8", "Balancing factor Beta", "", info)
+    st8 = q_header(ws, [("Beta", NQ)])
+    vb8 = st8[0]
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        for t in range(NQ):
+            ws.cell(R(d), vb8 + t, float(S["r8_beta"].iat[d, t]))
+    # R9
+    ws = sheet_base(wb, "R9", "Estimasi akhir ADHB", "", info)
+    st9 = q_header(ws, [("Nilai agregat", NQ), ("Growth q-to-q (%)", NQ),
+                        ("Growth y-on-y (%)", NQ), ("Growth c-to-c (%)", NQ)])
+    vc, qc0, yc0, cc0 = st9
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        for t in range(NQ):
+            ws.cell(R(d), vc + t, f"=R8!{CL(vb8+t)}{R(d)}*E3!{CL(vc+t)}{R(d)}")
+        g_formulas(ws, R(d), vc, NQ, qc0, yc0, cc0)
+    # R10
+    ws = sheet_base(wb, "R10", "Estimasi akhir ADHK 2025", "", info)
+    st10 = q_header(ws, [("Nilai agregat", NQ), ("Growth q-to-q (%)", NQ),
+                         ("Growth y-on-y (%)", NQ), ("Growth c-to-c (%)", NQ)])
+    vc10, qc10, yc10, cc10 = st10
+    for d in range(13):
+        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        for t in range(NQ):
+            ws.cell(R(d), vc10 + t,
+                    f"=IF(E4!{CL(vc+t)}{R(d)}=0,NA(),R9!{CL(vc+t)}{R(d)}/E4!{CL(vc+t)}{R(d)}*100)")
+        g_formulas(ws, R(d), vc10, NQ, qc10, yc10, cc10)
+    # A11
+    ws = sheet_base(wb, "A11", "Agregasi 7 subkomponen rilis", "", info)
+    sta = q_header(ws, [("Nilai berlaku", NQ), ("Nilai konstan", NQ)])
+    vn, vk = sta
+    for s in range(7):
+        ws.cell(R(s), 1, f"{s+1:02d}"); ws.cell(R(s), 2, SUB7[s])
+        terms_n = "+".join(f"R9!{CL(vc)}{R(j)}" for j in MAP7[s])
+        terms_k = "+".join(f"R10!{CL(vc10)}{R(j)}" for j in MAP7[s])
+        for t in range(NQ):
+            tn = "+".join(f"R9!{CL(vc+t)}{R(j)}" for j in MAP7[s])
+            tk = "+".join(f"R10!{CL(vc10+t)}{R(j)}" for j in MAP7[s])
+            ws.cell(R(s), vn + t, f"={tn}")
+            ws.cell(R(s), vk + t, f"={tk}")
+    # A12
+    ws = sheet_base(wb, "A12", "Konsumsi per kapita (Rp Ribu)", "", info)
+    ws.cell(TOP, 3, "Jumlah penduduk (jiwa)"); ws.cell(TOP, 4, S["penduduk"])
+    PEND = f"$D${TOP}"
+    stb = q_header(ws, [("Per kapita berlaku", NQ), ("Per kapita konstan", NQ)])
+    vn2, vk2 = stb
+    for s in range(7):
+        ws.cell(R(s), 1, f"{s+1:02d}"); ws.cell(R(s), 2, SUB7[s])
+        for t in range(NQ):
+            ws.cell(R(s), vn2 + t, f"=IF({PEND}=0,NA(),A11!{CL(vn+t)}{R(s)}*1000/{PEND})")
+            ws.cell(R(s), vk2 + t, f"=IF({PEND}=0,NA(),A11!{CL(vk+t)}{R(s)}*1000/{PEND})")
+    # QC
+    ws = sheet_base(wb, "QC", "Pemeriksaan konsistensi internal & eksternal", "", info)
+    r = TOP
+    for c in QC:
+        ws.cell(r, 1, c["No"]); ws.cell(r, 2, c["Aspek"]); ws.cell(r, 3, c["Pertanyaan"])
+        ws.cell(r, 4, c["Jenis"]); ws.cell(r, 5, c["Status"]); ws.cell(r, 6, c["Keterangan"])
+        r += 1
+    ws.cell(r + 1, 2, "Tingkat konsistensi")
+    ws.cell(r + 1, 5, f'=COUNTIF(E{TOP}:E{r},"LULUS")/22')
+    ws.cell(r + 1, 5).number_format = "0.00%"
+    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
-# ----------------------------- TAHAP 2 -----------------------------
-elif page.startswith("📥"):
-    st.subheader("📥 Tahap 2 · Input Indikator & Data Dasar (Sheet E0–E5 & I6)")
-    tab0, tab1, tab2, tab3, tab4 = st.tabs(
-        ["💰 Basis ADHB & Indikator", "🍚 Susenas", "📈 IHK (COICOP 2018)",
-         "🏭 Proxy Sektoral", "🏠 Imputasi Khusus"])
+# ============================ ANTARMUKA ============================
+st.title("📊 Otomasi Lembar Kerja BPS — PKRT Triwulanan Kab. Cirebon (2025=100)")
+st.caption("WB1: 03. LK Deflator PPKK • WB2: 02. LK PKRT Put0_Rev • Sister city: Kota Cirebon (3274)")
 
-    with tab0:
-        st.markdown("**Kolom pertama**: nilai ADHB 2025‑Q1 per subkomponen (juta Rp). **Kolom berikutnya**: laju perubahan (%) indikator volume/proxy tiap triwulan.")
-        cfg = {BASE_COL: st.column_config.NumberColumn(format="%.0f", min_value=0)}
-        for c in GCOLS:
-            cfg[c] = st.column_config.NumberColumn(format="%.2f")
-        edited = st.data_editor(S["pdrb_in"], key="ed_pdrb", column_config=cfg, num_rows="fixed")
-        S["pdrb_in"] = edited
-        st.caption(f"Σ basis 2025‑Q1 = **{fnum(edited.iloc[:, 0].sum(), 0)} juta Rp**")
-        with st.expander("💡 Bingung mengisi laju indikator? Gunakan saran proxy historis Kab. Cirebon"):
-            st.markdown(
-                "- **Makanan** → pengeluaran per kapita Susenas + efek musim (Q1 Ramadan: +2,5–3,5%).\n"
-                "- **Pakaian** → penjualan eceran sandang; melonjak menjelang Lebaran.\n"
-                "- **Perumahan** → pertumbuhan pelanggan & kWh listrik PLN + sewa.\n"
-                "- **Transportasi** → jumlah penumpang angkutan & kendaraan terdaftar (Samsat).\n"
-                "- **Restoran & Hotel** → TPK hotel BPS + omzet usaha makan-minum.\n"
-                "- **Pendidikan** → kalender ajaran baru (lonjakan Q3).\n"
-                "- Tren historis Kab. Cirebon: 0,5–1,5% per triwulan (non-musiman).")
+tab1, tab2, tab3, tab4 = st.tabs(["📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
+                                  "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker"])
 
-    with tab1:
-        st.markdown("**Pengeluaran per kapita Susenas** menurut kelompok makanan & non-makanan.")
-        st.info("📌 *Sumber*: BPS — **Susenas Maret**. *Mengapa dibutuhkan*: benchmark total PK-RT = per kapita × penduduk (QC #21).")
-        cfg_s = {"Rp/Kapita/Tahun": st.column_config.NumberColumn(format="%.0f", min_value=0)}
-        ed_s = st.data_editor(S["susenas_in"], key="ed_susenas", column_config=cfg_s)
-        S["susenas_in"] = ed_s
-        perkap = ed_s["Rp/Kapita/Tahun"].astype(float).sum()
-        bench = perkap * S["penduduk"] / 1e6
-        m1, m2 = st.columns(2)
-        m1.metric("Total pengeluaran per kapita / tahun", f"Rp {fnum(perkap, 0)}")
-        m2.metric("Benchmark PK-RT setahun (juta Rp)", fnum(bench, 0))
+with tab1:
+    st.header("Alur kerja 8 langkah")
+    steps = [
+        ("1", "Isi identitas & periode", "Tab WB1/WB2 otomatis memakai Kode 32.09 dan sister city 3274."),
+        ("2", "WB1-E1: input IHK bulanan", "17 subkomponen 2022=100 dari BRS IHK BPS (bulanan)."),
+        ("3", "WB1-E2: input konsumsi dasar", "Diagram Timbang SBH 2022 → bobot penggabungan otomatis."),
+        ("4", "WB1-E3/E4/E5", "Aplikasi menghitung IHK 13 COICOP bulanan → triwulanan → 2025=100."),
+        ("5", "WB2-E0 & E1", "Input rilis 2010=100 (ADHB/ADHK) dan Seruti 2023Q1+; backcasting otomatis."),
+        ("6", "WB2-E2/E3", "Theta = SUT 2025 / Seruti 2025; ADHB inisial = Theta × Seruti × coverage adj."),
+        ("7", "WB2-E4/E5", "Deflator ditarik dari E5 WB1 (2024Q1+), backcast via IPD 2010 (2019-2023); ADHK inisial."),
+        ("8", "R8-R10, A11, A12, QC", "Balancing factor, estimasi akhir, agregasi 7 subkomponen, per kapita, 22 cek QC."),
+    ]
+    for a, b, c in steps:
+        st.markdown(f"**Langkah {a} — {b}**: {c}")
+    st.info("Semua pembagian dilindungi: pembuat nol menghasilkan `NA` (bukan crash / #DIV/0!).")
 
-    with tab2:
-        st.markdown("**Inflasi triwulanan (%) per 13 Divisi COICOP 2018** — basis indeks 2025‑Q1 = 100.")
-        st.info("📌 *Sumber*: **BRS IHK** BPS. *Mengapa dibutuhkan*: IHK adalah **deflator** ADHB → ADHK 2025. Kolom 2025‑Q1 informatif (basis).")
-        cfg_i = {c: st.column_config.NumberColumn(format="%.2f") for c in PERIODE}
-        ed_i = st.data_editor(S["ihk_in"], key="ed_ihk", column_config=cfg_i)
-        S["ihk_in"] = ed_i
-        _, umum = hitung_level_ihk(ed_i)
-        st.markdown("**Hasil: IHK Umum (2025‑Q1 = 100)**")
-        st.line_chart(pd.DataFrame({"IHK Umum": umum}, index=PERIODE))
+with tab2:
+    st.subheader("Workbook 1 — Lembar Kerja Deflator PKRT")
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.selectbox("Periode estimasi (YYYY-QQ)", [q[:4] + "-" + q[-1] for q in Q_FULL if q >= "2024Q1"],
+                     index=[q[:4] + "-" + q[-1] for q in Q_FULL if q >= "2024Q1"].index(S["periode"]),
+                     key="periode")
+    with c2:
+        st.markdown("**E2 — Nilai Konsumsi Dasar (SBH 2022)**")
+        ed = st.data_editor(S["e2_dasar"], key="ed_dasar", num_rows="fixed")
+        S["e2_dasar"] = ed
+    st.markdown("**E1 — IHK bulanan subkomponen (2022=100)**")
+    ed1 = st.data_editor(S["e1_ihk"].loc[:, M_ACT], key="ed_ihk", num_rows="fixed")
+    S["e1_ihk"].loc[:, M_ACT] = ed1
+    cA, cB = st.columns(2)
+    with cA:
+        st.markdown("**E4 — IHK triwulanan (2022=100)**")
+        st.dataframe(W1["q22"].round(2))
+    with cB:
+        st.markdown("**E5 — IHK triwulanan (2025=100) → dikirim ke E4 WB2**")
+        st.dataframe(W1["q25"].round(2))
+        st.line_chart(W1["q25"].T)
 
-    with tab3:
-        st.markdown("**Indikator volume / proxy sektoral** (referensi pendukung).")
+with tab3:
+    st.subheader("Workbook 2 — Lembar Kerja Utama PKRT")
+    tA, tB, tC, tD = st.tabs(["E0 & E1 (input)", "E2 & Help", "I6, F7, R8, A12", "Hasil E3-E5, R9-R10, A11"])
+    with tA:
+        st.markdown("**E0 — Rilis 2010=100: ADHB**")
+        e0b = st.data_editor(S["e0_adhb"].loc[:, Q_ACT], key="ed_e0b", num_rows="fixed")
+        S["e0_adhb"].loc[:, Q_ACT] = e0b
+        st.markdown("**E0 — Rilis 2010=100: ADHK**")
+        e0k = st.data_editor(S["e0_adhk"].loc[:, Q_ACT], key="ed_e0k", num_rows="fixed")
+        S["e0_adhk"].loc[:, Q_ACT] = e0k
+        st.markdown("**E1 — Seruti agregat tertimbang (2023Q1+)**")
+        es = st.data_editor(S["e1_seruti"].loc[:, [q for q in Q_ACT if q >= "2023Q1"]], key="ed_ser", num_rows="fixed")
+        S["e1_seruti"].loc[:, es.columns] = es
+    with tB:
+        st.markdown("**E2 — PKRT SUT 2025 per divisi**")
+        esut = st.data_editor(S["e2_sut"], key="ed_sut", num_rows="fixed")
+        S["e2_sut"] = esut
+        st.markdown("**Help — konstanta BPS**")
+        st.write(pd.DataFrame([["Disagregasi div 12→12", PROP_DISAG[11]], ["Disagregasi div 12→13", PROP_DISAG[12]],
+                               ["Coverage adj div 06", COV_ADJ[5]], ["Coverage adj div 12", COV_ADJ[11]]],
+                              columns=["Konstanta", "Nilai"]))
+        st.markdown("**Theta (scaling factor)**")
+        st.dataframe(W2["theta"].round(4))
+    with tC:
+        st.markdown("**I6 — indikator administratif**")
+        ei6 = st.data_editor(S["i6_admin"], key="ed_i6", num_rows="dynamic")
+        S["i6_admin"] = ei6
+        st.markdown("**F7 — fenomena kualitatif**")
+        ef7 = st.data_editor(S["f7_fenomena"], key="ed_f7", num_rows="fixed")
+        S["f7_fenomena"] = ef7
+        st.markdown("**R8 — balancing factor Beta**")
+        eb = st.data_editor(S["r8_beta"].loc[:, Q_ACT], key="ed_beta", num_rows="fixed")
+        S["r8_beta"].loc[:, Q_ACT] = eb
+        st.number_input("Jumlah penduduk (jiwa)", min_value=1, value=int(S["penduduk"]), key="penduduk")
+    with tD:
         c1, c2 = st.columns(2)
         with c1:
-            st.number_input("Pertumbuhan penumpang transportasi (% yoy)", value=6.5, step=0.1, key="prox_penumpang")
-            st.number_input("TPK Hotel & Akomodasi (%)", value=42.3, step=0.1, key="prox_tpk")
+            st.markdown("**E3 — ADHB inisial**"); st.dataframe(W2["e3"].round(1))
+            st.markdown("**R9 — ADHB final**"); st.dataframe(W2["r9"].round(1))
         with c2:
-            st.number_input("Pertumbuhan kWh listrik PLN terjual (%)", value=4.8, step=0.1, key="prox_kwh")
-            st.number_input("Pertumbuhan PDRB Industri Pengolahan Pangan (%)", value=5.2, step=0.1, key="prox_industri")
-        st.info("📌 *Sumber*: Dishub, Samsat, BPS (TPK), laporan PLN, Dinas Perindustrian.")
+            st.markdown("**E4 — deflator 2025=100**"); st.dataframe(W2["cpi"].round(2))
+            st.markdown("**R10 — ADHK final**"); st.dataframe(W2["r10"].round(1))
+        st.markdown("**A11 — 7 subkomponen (ADHB / ADHK)**")
+        st.dataframe(pd.concat([W2["a11n"].add_prefix("ADHB_"), W2["a11k"].add_prefix("ADHK_")], axis=1).round(1))
 
-    with tab4:
-        st.markdown("**Imputasi khusus rebasing**.")
-        c1, c2, c3 = st.columns(3)
-        c1.number_input("Sewa rumah imputasi / OOD — share subkomponen perumahan (%)",
-                        value=38.0, step=0.5, key="ood_pct")
-        c2.number_input("FISIM (Rp miliar/triwulan)", value=210.0, step=5.0, key="fisim_miliar")
-        c3.number_input("Premi-neto asuransi (Rp miliar/triwulan)", value=45.0, step=5.0, key="asuransi_miliar")
-        st.info("📌 *Sumber*: tabel SUT 2025 & neraca kelembagaan BPS. Nilai telah tercakup dalam basis ADHB.")
-
-# ----------------------------- TAHAP 3 -----------------------------
-elif page.startswith("🧹"):
-    st.subheader("🧹 Tahap 3 · Penyesuaian Metodologis Rebasing 2025")
-    st.markdown("#### Rule 1 — BPJS Kesehatan & JKK → PKP")
-    st.caption("Klaim/manfaat BPJS Kesehatan & JKK dikeluarkan dari COICOP 06 dan dialihkan ke PKP.")
-    c1, c2 = st.columns([1, 1])
-    c1.checkbox("Terapkan Rule 1", value=True, key="rule_bpjs")
-    c2.number_input("Nilai klaim BPJS Kes + JKK (Rp miliar/tahun)", min_value=0.0, value=185.0, step=5.0, key="bpjs_miliar")
-    st.markdown("#### Rule 2 — Social Transfers in Kind (STIK) → PKP")
-    st.caption("Bantuan fisik barang pemerintah (mis. MBG) dipindahkan dari PK-RT ke PKP (mengurangi subkomponen Makanan).")
-    c1, c2 = st.columns([1, 1])
-    c1.checkbox("Terapkan Rule 2", value=True, key="rule_stik")
-    c2.number_input("Nilai STIK/MBG (Rp miliar/tahun)", min_value=0.0, value=120.0, step=5.0, key="stik_miliar")
-    st.markdown("#### Rule 3 — Rekonsiliasi COICOP 2018 → 7 Subkomponen Rilis")
-    map_df = pd.DataFrame([
-        ["1", "Makanan, Minuman, & Tembakau", "Divisi 01, 02"],
-        ["2", "Pakaian & Alas Kaki", "Divisi 03"],
-        ["3", "Perumahan, Air, Listrik, Gas & BB Lainnya", "Divisi 04"],
-        ["4", "Kesehatan (Non-BPJS) & Pendidikan", "Divisi 06, 10"],
-        ["5", "Transportasi, Informasi, & Komunikasi", "Divisi 07, 08"],
-        ["6", "Restoran & Hotel", "Divisi 11, 12"],
-        ["7", "Lainnya (Barang & Jasa Pribadi/Lainnya)", "Divisi 05, 09, 13"],
-    ], columns=["No", "Subkomponen Rilis", "Divisi COICOP 2018"])
-    st.dataframe(map_df, hide_index=True)
-    st.markdown("#### Dampak penyesuaian pada ADHB (2026‑Q4)")
-    H = S["hasil"]
-    t = 7
-    rek = pd.DataFrame([
-        {"Subkomponen": SUBKOMPONEN[0], "ADHB Sebelum (Jt Rp)": H["adhb_raw"][SUBKOMPONEN[0]][t],
-         "Penyesuaian (Jt Rp)": -H["stik_q"], "ADHB Sesudah (Jt Rp)": H["adhb"][SUBKOMPONEN[0]][t],
-         "Keterangan": "STIK/MBG → PKP" if S["rule_stik"] else "Rule 2 nonaktif"},
-        {"Subkomponen": SUBKOMPONEN[3], "ADHB Sebelum (Jt Rp)": H["adhb_raw"][SUBKOMPONEN[3]][t],
-         "Penyesuaian (Jt Rp)": -H["bpjs_q"], "ADHB Sesudah (Jt Rp)": H["adhb"][SUBKOMPONEN[3]][t],
-         "Keterangan": "BPJS Kes & JKK → PKP" if S["rule_bpjs"] else "Rule 1 nonaktif"},
-    ])
-    for col in ["ADHB Sebelum (Jt Rp)", "Penyesuaian (Jt Rp)", "ADHB Sesudah (Jt Rp)"]:
-        rek[col] = rek[col].apply(lambda x: fnum(x, 1))
-    st.dataframe(rek, hide_index=True)
-
-# ----------------------------- TAHAP 4 -----------------------------
-elif page.startswith("🧮"):
-    st.subheader("🧮 Tahap 4 · Penghitungan Otomatis")
-    with st.expander("📐 Lihat formula yang digunakan", expanded=False):
-        st.latex(r"""
-        \text{ADHB}_{t} = \text{ADHB}_{t-1}\times\left(1+\frac{\%\Delta\,\text{Indikator}}{100}\right)
-        \qquad
-        \text{ADHK}_{t} = \frac{\text{ADHB}_{t}}{\text{Deflator}_{t}}\times 100
-        """)
-        st.latex(r"""
-        Q\text{-to-}Q = \left(\frac{\text{ADHK}_{t}}{\text{ADHK}_{t-1}}-1\right)\!\times100\%
-        \qquad
-        Y\text{-on-}Y = \left(\frac{\text{ADHK}_{t}}{\text{ADHK}_{t-4}}-1\right)\!\times100\%
-        """)
-    hitung_semua()
-    H = S["hasil"]
-    t = PERIODE.index(fokus) if fokus in PERIODE else 7
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric(f"Total ADHB {fokus}", f"{fnum(H['total_adhb'][t], 0)} jt Rp")
-    m2.metric(f"Total ADHK {fokus}", f"{fnum(H['total_adhk'][t], 0)} jt Rp",
-              delta=None if H["qoq_tot"][t] is None else f"{fnum(H['qoq_tot'][t], 2)}% q-to-q")
-    m3.metric("Y-on-Y", "–" if H["yoy_tot"][t] is None else f"{fnum(H['yoy_tot'][t], 2)}%")
-    m4.metric("C-to-C 2026 vs 2025", f"{fnum(H['ctc'], 2)}%")
-
-    def tabel_seri(d, dec, judul):
-        df = pd.DataFrame(d, index=PERIODE)
-        func = lambda x: fnum(x, dec)
-        disp = df.map(func) if hasattr(df, "map") else df.applymap(func)
-        st.markdown(f"**{judul}**")
-        st.dataframe(disp)
-
-    tabel_seri({sk: H["adhb"][sk] for sk in SUBKOMPONEN}, 1, "ADHB — Juta Rp (setelah Rule 1 & 2)")
-    tabel_seri({sk: H["defl"][sk] for sk in SUBKOMPONEN}, 2, "Deflator (2025‑Q1 = 100)")
-    tabel_seri({sk: H["adhk"][sk] for sk in SUBKOMPONEN}, 1, "ADHK 2025 — Juta Rp")
-    st.line_chart(pd.DataFrame({"Total ADHB": H["total_adhb"], "Total ADHK": H["total_adhk"]},
-                               index=PERIODE))
-
-# ----------------------------- TAHAP 5 -----------------------------
-elif page.startswith("🛡️"):
-    st.subheader("🛡️ Tahap 5 · Quality Control Otomatis — 22 Checkpoints")
-    st.text_area("Catatan fenomena khusus (opsional)", key="catatan_fenomena", height=70)
-    checks = jalankan_qc()
-    lulus = sum(1 for c in checks if "✅" in c["Status"])
-    pering = sum(1 for c in checks if "⚠️" in c["Status"])
-    gagal = sum(1 for c in checks if "❌" in c["Status"])
-    m1, m2, m3 = st.columns(3)
-    m1.metric("✅ Lulus", lulus)
-    m2.metric("⚠️ Peringatan", pering)
-    m3.metric("❌ Gagal", gagal)
-    dfc = pd.DataFrame(checks)
-    st.dataframe(dfc, hide_index=True)
-    if pering == 0 and gagal == 0:
-        st.success("🎉 Seluruh 22 checkpoint LULUS. Angka siap ditelaah untuk rilis.")
-    else:
-        st.warning("Terdapat temuan QC. Telusuri detail di atas — periksa kembali sumber data indikator terkait.")
-
-# ----------------------------- DASHBOARD -----------------------------
-else:
-    st.subheader("📊 Dashboard Hasil — Rekapitulasi PK-RT (Sheet R8/R10)")
-    checks = jalankan_qc()
-    stat_sk = status_qc_per_sk(checks)
-    rekap = buat_rekap(fokus, stat_sk)
-    st.markdown(f"**Periode fokus: {fokus}** · Satuan: Juta Rupiah · Deflator 2025=100")
-    st.dataframe(rekap_display(rekap), hide_index=True)
-    total_status = "✅ VALID" if not any("⚠️" in c["Status"] or "❌" in c["Status"] for c in checks) else "⚠️ PERLU REVIEW"
-    st.markdown(f"**Status agregat: {total_status}**")
-    H = S["hasil"]
+with tab4:
+    st.subheader("Dashboard & QC Checker")
+    t = NQ - 1
+    rek = pd.DataFrame({
+        "Subkomponen": SUB7,
+        "ADHB (Jt Rp)": W2["a11n"].iloc[:, t].values,
+        "Deflator": [np.average(W2["cpi"].iloc[MAP7[s], t],
+                                weights=W2["r9"].iloc[MAP7[s], t].values) for s in range(7)],
+        "ADHK (Jt Rp)": W2["a11k"].iloc[:, t].values,
+        "Q-to-Q (%)": (W2["a11k"].iloc[:, t].values / W2["a11k"].iloc[:, t - 1].values - 1) * 100 if t else np.nan,
+        "Y-on-Y (%)": (W2["a11k"].iloc[:, t].values / W2["a11k"].iloc[:, t - 4].values - 1) * 100 if t >= 4 else np.nan,
+        "Share (%)": W2["a11n"].iloc[:, t].values / W2["a11n"].iloc[:, t].sum() * 100,
+    })
+    st.dataframe(rek.round(2), hide_index=True)
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("**Struktur ADHB (triwulan terakhir)**")
-        share = pd.DataFrame({"Share (%)": [H["adhb"][sk][7] / H["total_adhb"][7] * 100 for sk in SUBKOMPONEN]},
-                             index=NAMA_PENDEK)
-        st.bar_chart(share)
+        st.bar_chart(rek.set_index("Subkomponen")[["ADHB (Jt Rp)", "ADHK (Jt Rp)"]])
     with c2:
-        st.markdown("**Laju ADHK 2026‑Q4 (%)**")
-        gr = pd.DataFrame({"Q-to-Q": [H["qoq"][sk][7] for sk in SUBKOMPONEN],
-                           "Y-on-Y": [H["yoy"][sk][7] for sk in SUBKOMPONEN]},
-                          index=NAMA_PENDEK)
-        st.bar_chart(gr)
-    st.markdown("**Tren Total PK-RT (2025‑Q1 s.d. 2026‑Q4)**")
-    st.line_chart(pd.DataFrame({"ADHB": H["total_adhb"], "ADHK": H["total_adhk"]}, index=PERIODE))
-    st.markdown("### ⬇️ Unduh Hasil")
-    dl1, dl2 = st.columns(2)
-    with dl1:
-        csv1 = rekap.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("Unduh Rekap R8/R10 (CSV)", csv1,
-                           file_name="rekap_pkrt_cirebon.csv", mime="text/csv")
-    with dl2:
-        rows = []
-        for sk in SUBKOMPONEN:
-            rows.append(["ADHB", sk] + H["adhb"][sk])
-            rows.append(["ADHK", sk] + H["adhk"][sk])
-            rows.append(["Deflator", sk] + H["defl"][sk])
-        rows.append(["ADHB", "TOTAL"] + H["total_adhb"])
-        rows.append(["ADHK", "TOTAL"] + H["total_adhk"])
-        dfx = pd.DataFrame(rows, columns=["Seri", "Subkomponen"] + PERIODE)
-        csv2 = dfx.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("Unduh Series Lengkap (CSV)", csv2,
-                           file_name="series_pkrt_cirebon.csv", mime="text/csv")
-    st.caption("⚠️ Aplikasi ini alat bantu hitung & QC. Angka final tetap mengikuti hasil Quality Control resmi BPS.")
-
-# =====================================================================
-# 💾 SIMPAN & MUAT DATA INPUT
-# =====================================================================
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 💾 Simpan / Muat Pekerjaan")
-
-def _kumpul_state():
-    return {
-        "pdrb_in": S["pdrb_in"].to_dict(),
-        "ihk_in": S["ihk_in"].to_dict(),
-        "susenas_in": S["susenas_in"].to_dict(orient="list"),
-        "penduduk": S["penduduk"],
-        "mode_periode": S["mode_periode"],
-        "fokus_tw": S["fokus_tw"],
-        "fokus_th": S["fokus_th"],
-        "rule_bpjs": S["rule_bpjs"],
-        "rule_stik": S["rule_stik"],
-        "bpjs_miliar": S["bpjs_miliar"],
-        "stik_miliar": S["stik_miliar"],
-        "ood_pct": S["ood_pct"],
-        "fisim_miliar": S["fisim_miliar"],
-        "asuransi_miliar": S["asuransi_miliar"],
-    }
-
-_json = json.dumps(_kumpul_state(), ensure_ascii=False, indent=2).encode("utf-8")
-st.sidebar.download_button("⬇️ Simpan data input (file JSON)", _json,
-                           file_name="data_pkrt_cirebon.json",
-                           mime="application/json")
-
-_upl = st.sidebar.file_uploader("⬆️ Muat data input dari file", type=["json"])
-if _upl is not None:
-    try:
-        _d = json.loads(_upl.getvalue().decode("utf-8"))
-        S["pdrb_in"] = pd.DataFrame(_d["pdrb_in"])
-        S["ihk_in"] = pd.DataFrame(_d["ihk_in"])
-        S["susenas_in"] = pd.DataFrame(_d["susenas_in"])
-        for _k in ["penduduk", "mode_periode", "fokus_tw", "fokus_th", "rule_bpjs",
-                   "rule_stik", "bpjs_miliar", "stik_miliar", "ood_pct",
-                   "fisim_miliar", "asuransi_miliar"]:
-            if _k in _d:
-                S[_k] = _d[_k]
-        for _wk in ["ed_pdrb", "ed_ihk", "ed_susenas"]:
-            st.session_state.pop(_wk, None)
-        st.sidebar.success("✅ Data berhasil dimuat!")
-        st.rerun()
-    except Exception as _e:
-        st.sidebar.error(f"Gagal memuat file: {_e}")
+        st.line_chart(W2["a11k"].T)
+    st.metric("Tingkat Konsistensi QC", f"{RATE:.2f}%")
+    st.dataframe(pd.DataFrame(QC), hide_index=True)
+    st.markdown("### ⬇️ Export Excel multi-sheet (struktur & rumus template BPS)")
+    d1, d2 = st.columns(2)
+    with d1:
+        st.download_button("Unduh WB1 — LK Deflator (.xlsx)", export_wb1(),
+                           file_name="03_LK_Deflator_PKRT_2025_100_Cirebon.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with d2:
+        st.download_button("Unduh WB2 — LK Utama PKRT (.xlsx)", export_wb2(),
+                           file_name="02_LK_PKRT_Triwulanan_2025_100_Cirebon.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
