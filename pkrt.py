@@ -131,7 +131,7 @@ def compute_wb1():
     dasar = S["e2_dasar"]["Nilai Konsumsi Dasar (Rp Juta)"].astype(float)
     bobot, comps = {}, {}
     for d in range(13):
-        subs = SPLIT.get(d, [SINGLE[d]])
+        subs = SPLIT[d] if d in SPLIT else [SINGLE[d]]
         tot = sum(dasar.iat[s] for s in subs)
         bobot[d] = {s: sdiv(dasar.iat[s], tot) for s in subs}
         comps[d] = subs
