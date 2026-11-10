@@ -196,52 +196,62 @@ S = st.session_state
 
 # ============================ SIDEBAR + PERIODE (BUG FIX) ============================
 st.sidebar.title("🧭 Konfigurasi & Sumber Data")
+
+# ---- 1) Tombol & uploader DULU (sebelum widget ber-key dibuat) ----
+_b1, _b2 = st.sidebar.columns(2)
+if _b1.button("🎲 Muat Simulasi"):
+    muat_simulasi()
+    for _k in list(st.session_state.keys()):
+        if _k.startswith("ed_"):
+            del st.session_state[_k]
+    st.rerun()
+if _b2.button("🧹 Template Kosong"):
+    kosongkan()
+    for _k in list(st.session_state.keys()):
+        if _k.startswith("ed_"):
+            del st.session_state[_k]
+    st.rerun()
+
+_upl = st.sidebar.file_uploader("⬆️ Muat file JSON", type=["json"])
+if _upl is not None:
+    try:
+        _d = json.loads(_upl.getvalue().decode("utf-8"))
+        for _k in DF_KEYS:
+            if _k in _d:
+                S[_k] = pd.DataFrame.from_dict(_d[_k], orient="split")
+        for _k in SC_KEYS:
+            if _k in _d:
+                S[_k] = _d[_k]
+        for _k in list(st.session_state.keys()):
+            if _k.startswith("ed_"):
+                del st.session_state[_k]
+        st.sidebar.success("✅ Data berhasil dimuat!")
+        st.rerun()
+    except Exception as _e:
+        st.sidebar.error(f"Gagal memuat file: {_e}")
+
+# ---- 2) Baru buat widget ber-key (aman: semua mutasi sudah selesai) ----
 PER_OPT = [f"{q[:4]}-Q{q[-1]}" for q in Q_FULL if q >= "2024Q1"]
 if S["periode"] not in PER_OPT:
     S["periode"] = PER_OPT[-1]
 st.sidebar.selectbox("Periode estimasi (YYYY-QQ)", PER_OPT,
                      index=PER_OPT.index(S["periode"]), key="periode")
 st.sidebar.caption("Kab. Cirebon (32.09) · Sister city Kota Cirebon (74) · Tahun dasar 2025=100")
-b1, b2 = st.sidebar.columns(2)
-if b1.button("🎲 Muat Simulasi"):
-    muat_simulasi()
-    st.rerun()
-if b2.button("🧹 Template Kosong"):
-    kosongkan()
-    st.rerun()
 st.sidebar.caption("Sumber aktif: **" + S.get("sumber_data", "-") + "**")
 
-# ---- 💾 SIMPAN / MUAT JSON ----
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 💾 Simpan / Muat Pekerjaan")
 
-def _kumpul():
+def _kumpul_state():
     out = {k: S[k].to_dict(orient="split") for k in DF_KEYS if k in S}
     for k in SC_KEYS:
         if k in S:
             out[k] = S[k]
     return out
 
-_json = json.dumps(_kumpul(), ensure_ascii=False).encode("utf-8")
+_json = json.dumps(_kumpul_state(), ensure_ascii=False, indent=2).encode("utf-8")
 st.sidebar.download_button("⬇️ Unduh JSON (simpan semua input)", _json,
-                           file_name="pkrt_cirebon_data.json", mime="application/json")
-_upl = st.sidebar.file_uploader("⬆️ Muat file JSON", type=["json"])
-if _upl is not None:
-    try:
-        d = json.loads(_upl.getvalue().decode("utf-8"))
-        for k in DF_KEYS:
-            if k in d:
-                S[k] = pd.DataFrame.from_dict(d[k], orient="split")
-        for k in SC_KEYS:
-            if k in d:
-                S[k] = d[k]
-        for k in list(S.keys()):
-            if k.startswith("ed_"):
-                del S[k]
-        st.sidebar.success("✅ Data berhasil dimuat!")
-        st.rerun()
-    except Exception as e:
-        st.sidebar.error(f"Gagal memuat file: {e}")
+                           file_name="data_pkrt_cirebon.json", mime="application/json")
 st.sidebar.caption("JSON berisi seluruh input (E0, E1, E2, I6, F7, R8, identitas). Hasil hitungan & export dihitung ulang otomatis.")
 
 PQ = S["periode"].replace("-", "")
