@@ -930,7 +930,8 @@ with tab1:
         ("8", "QC & Export", "22 butir konsistensi + unduh 2 file .xlsx multi-sheet sesuai template BPS.")]:
         st.markdown(f"**Langkah {a} — {b}**: {c}")
     st.info("Semua pembagian dilindungi: pembagi nol menghasilkan NA (bukan crash / #DIV/0!).")
-        with st.expander("📂 Cara Import Template PDRB ke E0", expanded=False):
+
+    with st.expander("📂 Cara Import Template PDRB ke E0", expanded=False):
         st.markdown("""
 **Langkah-langkah:**
 1. Buka sidebar → klik **"📂 Muat Template PDRB (.xlsx) → E0"**
@@ -952,31 +953,32 @@ with tab1:
 | 1.k (id=12) | → | Penyediaan makan minum & akomodasi |
 | 1.l + 1.m (id=13+14) | → | Barang dan jasa lainnya **(dijumlahkan)** |
 
-> ⚠️ **Catatan:** Sheet harus bernama **ADHB** dan **ADHK**, 
+> ⚠️ **Catatan:** Sheet harus bernama **ADHB** dan **ADHK**,
 > kolom `id` berisi angka 2–14, dan kolom quarter berformat `2019Q1`–`2025Q4`.
         """)
-        with st.expander("📊 PANDUAN DATA RIIL Kab. Cirebon — Alur Perhitungan & Cakupan", expanded=False):
+
+    with st.expander("📊 PANDUAN DATA RIIL Kab. Cirebon — Alur Perhitungan & Cakupan", expanded=False):
         st.markdown("#### 🔗 Alur perhitungan data riil (mudah dipahami)")
         st.markdown("""
-1. **Seruti → Total Konsumsi (ADHB awal)**  
-   `Pengeluaran per-kapita (Seruti) × Jumlah Penduduk = Total Konsumsi (Rp Juta)`.  
+1. **Seruti → Total Konsumsi (ADHB awal)**
+   `Pengeluaran per-kapita (Seruti) × Jumlah Penduduk = Total Konsumsi (Rp Juta)`.
    Inilah bahan baku utama PKRT, diambil langsung dari **Seruti BPS 2023Q1–2026Q2**.
 
-2. **Scaling factor θ (Theta)**  
-   `θ = SUT 2025 ÷ Total Seruti 2025`. Pada data riil ini θ di-set **1 (netral)**,  
+2. **Scaling factor θ (Theta)**
+   `θ = SUT 2025 ÷ Total Seruti 2025`. Pada data riil ini θ di-set **1 (netral)**,
    sehingga ADHB awal = Seruti. Ubah nilai **E2 (SUT 2025)** bila ingin penyesuaian.
 
-3. **IHK → Deflator (2025=100)**  
-   IHK triwulanan Kota Cirebon (13 COICOP) di-*re-referencing* menjadi basis 2025=100  
+3. **IHK → Deflator (2025=100)**
+   IHK triwulanan Kota Cirebon (13 COICOP) di-*re-referencing* menjadi basis 2025=100
    di Workbook 1, lalu dipakai sebagai **deflator** di Workbook 2.
 
-4. **ADHB ÷ Deflator = ADHK**  
+4. **ADHB ÷ Deflator = ADHK**
    `ADHK = ADHB ÷ (IHK/100)`. Menghilangkan efek kenaikan harga → volume riil.
 
-5. **Balancing factor β (Beta)**  
+5. **Balancing factor β (Beta)**
    `ADHB final = β × ADHB awal`. Default β = 1; sesuaikan di **R8** bila perlu penyeimbangan.
 
-6. **Agregasi & Per-kapita**  
+6. **Agregasi & Per-kapita**
    Hasil 13 COICOP diagregasi jadi **7 subkomponen rilis**, lalu dibagi penduduk → **konsumsi per kapita**.
         """)
         st.markdown("#### 📅 Cakupan data riil")
@@ -994,6 +996,7 @@ with tab1:
                    "(deflator 2024+ yang tersedia). ADHB 2023 tetap terhitung dari Seruti riil.")
         st.success("💡 **Cara pakai:** klik tombol **📊 Data Riil** di sidebar, lalu telusuri "
                    "Workbook 1 → Workbook 2 → Dashboard. Semua angka berasal dari data riil BPS.")
+
     with st.expander("🎲 Dokumentasi dataset simulasi Kab. Cirebon", expanded=False):
         st.markdown("- **Musiman IHK**: Ramadan/Lebaran (Feb–Mar) menaikkan Makanan, Minuman, Rokok, Pakaian, Restoran; Jul (ajaran baru) menaikkan Pendidikan; Des–Jan (Nataru) menaikkan Transportasi, Restoran, Jasa lainnya.")
         st.markdown("- **Pertumbuhan**: nominal PKRT 0,8–1,5%/triwulan (peak Q1); IPD 2010=100 tumbuh 2,4–3,2%/tahun.")
