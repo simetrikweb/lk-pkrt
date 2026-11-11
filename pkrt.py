@@ -11,6 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter as CL
 import cirebon_real_simulation
+import sut_jabar_bridge
 st.set_page_config(page_title="LK PKRT & Deflator Kab. Cirebon", page_icon="📊", layout="wide")
 
 # ============================ KONSTANTA ============================
@@ -185,7 +186,191 @@ def kosongkan():
     S["i6_admin"] = pd.DataFrame(np.nan, index=["Pelanggan PLN rumah tangga (ribu)", "Listrik terjual RT (juta kWh)", "TPK hotel (%)", "Penumpang angkutan (juta orang)", "Kendaraan bermotor terdaftar (ribu)", "Transaksi QRIS (juta transaksi)"], columns=Q_FULL)
     S["f7_fenomena"] = pd.DataFrame("", index=DIV13, columns=["Fenomena triwulan berjalan"])
     S["sumber_data"] = "Template kosong (input manual)"
+# ============================ DATA RIIL CIREBON (dari cirebon_real_simulation.py) ============================
+# Peta 17 subkomponen (SUB17) -> indeks 13 COICOP
+SUB17_TO_COICOP = {0:0, 1:0, 2:1, 3:1, 4:2, 5:3, 6:4, 7:5, 8:6,
+                   9:7, 10:7, 11:8, 12:9, 13:10, 14:11, 15:11, 16:12}
 
+def _code(ci):                 # indeks COICOP 0-12 -> kode string "01".."13"
+    return f"{ci+1:02d}"
+
+def _q_of_month(m):            # "2024M5" -> "2024Q2"
+    y, mo = m.split("M")
+    return f"{y}Q{(int(mo)-1)//3 + 1}"
+
+def muat_data_riil():
+    """Isi lembar kerja dengan DATA RIIL BPS Kab. Cirebon.
+    Seruti 2023Q1-2026Q2 | IHK Kota Cirebon (2025=100) | Penduduk proyeksi."""
+    try:
+        import cirebon_real_simulation as crs
+        POP, IHK, SERUTI = crs.POPULATION_CIREBON, crs.DEFLATOR_IHK_2025, crs.SERUTI_PERKAPITA
+    except Exception as e:
+        st.error(f"Gagal memuat data riil. Pastikan cirebon_real_simulation.py ada & berisi dataset. Detail: {e}")
+        return
+
+    S = st.session_state
+
+    # ---------- E1 (WB1): IHK bulanan 17 subkomponen, diambil dari IHK triwulanan riil ----------
+    rows = {}
+    for s in range(17):
+        code = _code(SUB17_TO_COICOP[s])
+        rows[SUB17[s]] = [IHK.get(code, {}).get(_q_of_month(m), np.nan) for m in M_FULL]
+    df_ihk = pd.DataFrame(rows, index=M_FULL).T
+
+    # bobot divisi dari struktur pengeluaran riil 2023 (untuk IHK Umum)
+    q23 = ["2023Q1", "2023Q2", "2023Q3", "2023Q4"]
+    mean_pk = {}
+    for ci in range(13):
+        vs = [SERUTI[_code(ci)][q] for q in q23 if q in SERUTI.get(_code(ci), {})]
+        mean_pk[ci] = float(np.mean(vs)) if vs else 0.0
+    div_w = np.array([mean_pk[i] for i in range(13)], dtype=float)
+    div_w = div_w / div_w.sum() if div_w.sum() > 0 else div_w
+
+    umum = np.full(len(M_FULL), np.nan)
+    for j, m in enumerate(M_FULL):
+        q = _q_of_month(m)
+        num = den = 0.0
+        for ci in range(13):
+            v = IHK.get(_code(ci), {}).get(q, np.nan)
+            if np.isfinite(v):
+                num += div_w[ci] * v
+                den += div_w[ci]
+        umum[j] = num / den if den > 0 else np.nan
+    df_ihk.loc["IHK Umum"] = umum
+    S["e1_ihk"] = df_ihk
+
+    # ---------- E2 (WB1): bobot konsumsi dasar dari struktur pengeluaran riil 2023 ----------
+    dasar = np.zeros(17)
+    for s in range(17):
+        ci = SUB17_TO_COICOP[s]
+        n_sub = sum(1 for x in range(17) if SUB17_TO_COICOP[x] == ci)
+        dasar[s] = mean_pk[ci] / n_sub
+    S["e2_dasar"] = pd.DataFrame(dasar, index=SUB17, columns=["Nilai Konsumsi Dasar (Rp Juta)"])
+
+    # ---------- E1 (WB2): Seruti agregat riil = perkapita x penduduk (Rp Juta) ----------
+    ser_cols = [q for q in Q_FULL if q >= "2023Q1"]
+    df_ser = pd.DataFrame(np.nan, index=DIV13, columns=ser_cols)
+    for d in range(13):
+        for q in ser_cols:
+            pk  = SERUTI.get(_code(d), {}).get(q, np.nan)
+            pop = POP.get(q, np.nan)
+            if np.isfinite(pk) and np.isfinite(pop):
+                df_ser.iat[d, ser_cols.index(q)] = pk * pop / 1e6
+    S["e1_seruti"] = df_ser
+
+    # ---------- E2 (WB2): SUT 2025 = total Seruti 2025 (theta awal = 1 / netral) ----------
+    c25 = [q for q in ser_cols if q.startswith("2025")]
+    sut = []
+    for d in range(13):
+        ada = [q for q in c25 if q in df_ser.columns]
+        tot = df_ser.loc[DIV13[d], ada].sum() if ada else np.nan
+        sut.append(round(float(tot), 1) if np.isfinite(tot) else 0.0)
+    S["e2_sut"] = pd.DataFrame({"SUT 2025 (Rp Juta)": sut}, index=DIV13)
+
+    # ---------- E0 rilis 2010=100 : TIDAK tersedia pada data riil -> dikosongkan ----------
+    S["e0_adhb"] = pd.DataFrame(np.nan, index=OLD12, columns=Q_FULL)
+    S["e0_adhk"] = pd.DataFrame(np.nan, index=OLD12, columns=Q_FULL)
+
+    # ---------- R8 beta, I6, F7 : default ----------
+    S["r8_beta"] = pd.DataFrame(1.0, index=DIV13, columns=Q_FULL)
+    S["i6_admin"] = pd.DataFrame(np.nan,
+        index=["Pelanggan PLN rumah tangga (ribu)", "Listrik terjual RT (juta kWh)", "TPK hotel (%)",
+               "Penumpang angkutan (juta orang)", "Kendaraan bermotor terdaftar (ribu)",
+               "Transaksi QRIS (juta transaksi)"], columns=Q_FULL)
+    S["f7_fenomena"] = pd.DataFrame(
+        ["Data riil Seruti & IHK Kota Cirebon; lengkapi fenomena sesuai rilis BRS BPS." for _ in DIV13],
+        index=DIV13, columns=["Fenomena triwulan berjalan"])
+
+    # ---------- identitas ----------
+    S["periode"]  = "2026-Q2"
+    S["penduduk"] = int(POP.get("2026Q2", 2431927))
+    S["kode_prov"], S["kode_kab"], S["sister"] = "32", "09", "74"
+    S["petugas"], S["supervisor"] = "Statistikian BPS Kab. Cirebon", "Kasubag IP"
+    S["sumber_data"] = "DATA RIIL BPS Kab. Cirebon (Seruti 2023Q1–2026Q2 & IHK Kota Cirebon 2025=100)"    
+# ============================ IMPORT PDRB EXCEL → E0 ============================
+def muat_pdrb_excel(file_obj):
+    """
+    Membaca Template Upload PDRB (.xlsx) dan memetakan otomatis
+    baris 1.a–1.m ke 12 Divisi COICOP di E0 (ADHB & ADHK).
+    
+    Mapping:
+      id 2–12  → OLD12[0..10]  (1-to-1)
+      id 13+14 → OLD12[11]     (dijumlahkan: Jasa Keuangan + Perawatan diri)
+    """
+    import re, io as _io
+
+    # --- PETA: id Excel → index OLD12 ---
+    MAP_ID = {
+        2: 0,   # 1.a Makanan & Minuman tidak beralkohol
+        3: 1,   # 1.b Minuman Beralkohol & Tembakau
+        4: 2,   # 1.c Pakaian & Alas Kaki
+        5: 3,   # 1.d Perumahan, Air, Listrik, Gas...
+        6: 4,   # 1.e Furnitur & Perlengkapan RT
+        7: 5,   # 1.f Kesehatan
+        8: 6,   # 1.g Transportasi
+        9: 7,   # 1.h Informasi & Komunikasi → "Komunikasi"
+        10: 8,  # 1.i Rekreasi, Olahraga, Kebudayaan
+        11: 9,  # 1.j Jasa Pendidikan
+        12: 10, # 1.k Restoran & Jasa Akomodasi
+        13: 11, # 1.l Jasa Keuangan & Asuransi   ─┐
+        14: 11, # 1.m Perawatan diri & Jasa lainnya ─┴→ OLD12[11]
+    }
+
+    # Simpan bytes agar bisa dibaca 2x (ADHB & ADHK)
+    raw = file_obj.read()
+
+    adhb = pd.DataFrame(0.0, index=OLD12, columns=Q_FULL)
+    adhk = pd.DataFrame(0.0, index=OLD12, columns=Q_FULL)
+
+    for sheet, target in [("ADHB", adhb), ("ADHK", adhk)]:
+        try:
+            df = pd.read_excel(_io.BytesIO(raw), sheet_name=sheet, header=None)
+        except Exception:
+            continue
+
+        # --- Cari baris header otomatis ---
+        hdr = None
+        for i in range(min(10, len(df))):
+            vals = [str(v).strip().lower() for v in df.iloc[i].tolist()]
+            if "id" in vals and any("2019q1" in v for v in vals):
+                hdr = i
+                break
+        if hdr is None:
+            continue
+
+        # --- Identifikasi kolom id & kolom quarter ---
+        cols = df.iloc[hdr].tolist()
+        id_col, q_cols = None, {}
+        for j, c in enumerate(cols):
+            cs = str(c).strip().lower()
+            if cs == "id":
+                id_col = j
+            elif re.match(r"20\d{2}q[1-4]", cs):
+                q_cols[cs.upper()] = j
+
+        if id_col is None or not q_cols:
+            continue
+
+        # --- Isi DataFrame target ---
+        for _, row in df.iloc[hdr + 1:].iterrows():
+            try:
+                rid = int(float(row.iloc[id_col]))
+            except (ValueError, TypeError):
+                continue
+            if rid not in MAP_ID:
+                continue
+
+            idx12 = MAP_ID[rid]
+            for q_str, cj in q_cols.items():
+                if q_str not in Q_FULL:
+                    continue
+                try:
+                    val = float(str(row.iloc[cj]).replace(",", ""))
+                except (ValueError, TypeError):
+                    val = 0.0
+                target.iat[idx12, Q_FULL.index(q_str)] += val  # += utk id 13+14
+
+    return adhb, adhk
 def init_state():
     S = st.session_state
     if "sumber_data" not in S:
@@ -198,8 +383,25 @@ S = st.session_state
 st.sidebar.title("🧭 Konfigurasi & Sumber Data")
 
 # ---- 1) Tombol & uploader DULU (sebelum widget ber-key dibuat) ----
-_b1, _b2 = st.sidebar.columns(2)
+_b1, _b3, _b2 = st.sidebar.columns(3)
 if _b1.button("🎲 Muat Simulasi"):
+    muat_simulasi()
+    for _k in list(st.session_state.keys()):
+        if _k.startswith("ed_"):
+            del st.session_state[_k]
+    st.rerun()
+if _b3.button("📊 Data Riil"):
+    muat_data_riil()
+    for _k in list(st.session_state.keys()):
+        if _k.startswith("ed_"):
+            del st.session_state[_k]
+    st.rerun()
+if _b2.button("🧹 Template Kosong"):
+    kosongkan()
+    for _k in list(st.session_state.keys()):
+        if _k.startswith("ed_"):
+            del st.session_state[_k]
+    st.rerun()
     muat_simulasi()
     for _k in list(st.session_state.keys()):
         if _k.startswith("ed_"):
@@ -211,7 +413,25 @@ if _b2.button("🧹 Template Kosong"):
         if _k.startswith("ed_"):
             del st.session_state[_k]
     st.rerun()
-
+# --- Upload Template PDRB → otomatis isi E0 ---
+_upl_pdrb = st.sidebar.file_uploader("📂 Muat Template PDRB (.xlsx) → E0", type=["xlsx"])
+if _upl_pdrb is not None:
+    try:
+        _adhb, _adhk = muat_pdrb_excel(_upl_pdrb)
+        # Validasi: cek apakah ada data yang terbaca
+        if _adhb.abs().sum().sum() > 0:
+            S["e0_adhb"] = _adhb
+            S["e0_adhk"] = _adhk
+            S["sumber_data"] = "Template PDRB Kab. Cirebon (Excel upload)"
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("ed_"):
+                    del st.session_state[_k]
+            st.sidebar.success("✅ E0 berhasil diisi dari Template PDRB!")
+            st.rerun()
+        else:
+            st.sidebar.warning("⚠️ File terbaca tapi data PKRT (id 2–14) kosong.")
+    except Exception as _e:
+        st.sidebar.error(f"Gagal membaca Template PDRB: {_e}")
 _upl = st.sidebar.file_uploader("⬆️ Muat file JSON", type=["json"])
 if _upl is not None:
     try:
@@ -692,9 +912,10 @@ st.title("📊 Otomasi 2 Lembar Kerja BPS — PKRT & Deflator Kab. Cirebon (2025
 st.caption("WB1: 03. LK Deflator PPKK · WB2: 02. LK PKRT Put0_Rev · Periode fokus: **" + S["periode"] +
            "** · Sumber: **" + S.get("sumber_data", "-") + "**")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
-                                  "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker",
-                                  "🏙️ Simulasi Riil Kab. Cirebon"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
+    "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker",
+    "🏙️ Simulasi Riil Kab. Cirebon", "📗 SUT Jabar 2020"])
 
 with tab1:
     st.header("Alur kerja 8 langkah")
@@ -709,6 +930,70 @@ with tab1:
         ("8", "QC & Export", "22 butir konsistensi + unduh 2 file .xlsx multi-sheet sesuai template BPS.")]:
         st.markdown(f"**Langkah {a} — {b}**: {c}")
     st.info("Semua pembagian dilindungi: pembagi nol menghasilkan NA (bukan crash / #DIV/0!).")
+        with st.expander("📂 Cara Import Template PDRB ke E0", expanded=False):
+        st.markdown("""
+**Langkah-langkah:**
+1. Buka sidebar → klik **"📂 Muat Template PDRB (.xlsx) → E0"**
+2. Pilih file `Template Upload PDRB - CIREBON - 2025Q4 - Kosong.xlsx`
+3. Sistem otomatis memetakan:
+
+| Baris Excel | → | Divisi E0 (OLD12) |
+|---|---|---|
+| 1.a (id=2) | → | Makanan dan minuman tidak beralkohol |
+| 1.b (id=3) | → | Minuman beralkohol dan tembakau |
+| 1.c (id=4) | → | Pakaian dan alas kaki |
+| 1.d (id=5) | → | Perumahan, air, listrik, gas... |
+| 1.e (id=6) | → | Furnitur, perlengkapan RT |
+| 1.f (id=7) | → | Kesehatan |
+| 1.g (id=8) | → | Transportasi |
+| 1.h (id=9) | → | Komunikasi |
+| 1.i (id=10) | → | Rekreasi dan kebudayaan |
+| 1.j (id=11) | → | Pendidikan |
+| 1.k (id=12) | → | Penyediaan makan minum & akomodasi |
+| 1.l + 1.m (id=13+14) | → | Barang dan jasa lainnya **(dijumlahkan)** |
+
+> ⚠️ **Catatan:** Sheet harus bernama **ADHB** dan **ADHK**, 
+> kolom `id` berisi angka 2–14, dan kolom quarter berformat `2019Q1`–`2025Q4`.
+        """)
+        with st.expander("📊 PANDUAN DATA RIIL Kab. Cirebon — Alur Perhitungan & Cakupan", expanded=False):
+        st.markdown("#### 🔗 Alur perhitungan data riil (mudah dipahami)")
+        st.markdown("""
+1. **Seruti → Total Konsumsi (ADHB awal)**  
+   `Pengeluaran per-kapita (Seruti) × Jumlah Penduduk = Total Konsumsi (Rp Juta)`.  
+   Inilah bahan baku utama PKRT, diambil langsung dari **Seruti BPS 2023Q1–2026Q2**.
+
+2. **Scaling factor θ (Theta)**  
+   `θ = SUT 2025 ÷ Total Seruti 2025`. Pada data riil ini θ di-set **1 (netral)**,  
+   sehingga ADHB awal = Seruti. Ubah nilai **E2 (SUT 2025)** bila ingin penyesuaian.
+
+3. **IHK → Deflator (2025=100)**  
+   IHK triwulanan Kota Cirebon (13 COICOP) di-*re-referencing* menjadi basis 2025=100  
+   di Workbook 1, lalu dipakai sebagai **deflator** di Workbook 2.
+
+4. **ADHB ÷ Deflator = ADHK**  
+   `ADHK = ADHB ÷ (IHK/100)`. Menghilangkan efek kenaikan harga → volume riil.
+
+5. **Balancing factor β (Beta)**  
+   `ADHB final = β × ADHB awal`. Default β = 1; sesuaikan di **R8** bila perlu penyeimbangan.
+
+6. **Agregasi & Per-kapita**  
+   Hasil 13 COICOP diagregasi jadi **7 subkomponen rilis**, lalu dibagi penduduk → **konsumsi per kapita**.
+        """)
+        st.markdown("#### 📅 Cakupan data riil")
+        st.markdown("""
+| Komponen | Status | Periode |
+|---|---|---|
+| Seruti per-kapita (E1) | ✅ Riil | 2023Q1 – 2026Q2 |
+| IHK / Deflator (WB1) | ✅ Riil (IHK Kota Cirebon) | 2024Q1+ |
+| Jumlah Penduduk | ✅ Riil (Proyeksi SP2020) | 2023Q1 – 2026Q2 |
+| Rilis PDRB 2010=100 (E0) | ❌ Tidak tersedia | sebelum 2023 kosong |
+| SUT 2025, I6, F7 | ⚠️ Default/netral | bisa diisi manual |
+        """)
+        st.warning("⚠️ **Keterbatasan:** Karena rilis PDRB 2010=100 (E0) tidak tersedia, "
+                   "backcasting sebelum 2023 tidak berjalan, dan **ADHK 2023** belum dapat dihitung "
+                   "(deflator 2024+ yang tersedia). ADHB 2023 tetap terhitung dari Seruti riil.")
+        st.success("💡 **Cara pakai:** klik tombol **📊 Data Riil** di sidebar, lalu telusuri "
+                   "Workbook 1 → Workbook 2 → Dashboard. Semua angka berasal dari data riil BPS.")
     with st.expander("🎲 Dokumentasi dataset simulasi Kab. Cirebon", expanded=False):
         st.markdown("- **Musiman IHK**: Ramadan/Lebaran (Feb–Mar) menaikkan Makanan, Minuman, Rokok, Pakaian, Restoran; Jul (ajaran baru) menaikkan Pendidikan; Des–Jan (Nataru) menaikkan Transportasi, Restoran, Jasa lainnya.")
         st.markdown("- **Pertumbuhan**: nominal PKRT 0,8–1,5%/triwulan (peak Q1); IPD 2010=100 tumbuh 2,4–3,2%/tahun.")
@@ -832,3 +1117,5 @@ with tab4:
     with tab5:
 
         cirebon_real_simulation.render_cirebon_simulation()
+    with tab6:
+        sut_jabar_bridge.render_sut_bridge()
