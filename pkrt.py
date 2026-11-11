@@ -384,29 +384,21 @@ st.sidebar.title("🧭 Konfigurasi & Sumber Data")
 
 # ---- 1) Tombol & uploader DULU (sebelum widget ber-key dibuat) ----
 _b1, _b3, _b2 = st.sidebar.columns(3)
+
 if _b1.button("🎲 Muat Simulasi"):
     muat_simulasi()
     for _k in list(st.session_state.keys()):
         if _k.startswith("ed_"):
             del st.session_state[_k]
     st.rerun()
+
 if _b3.button("📊 Data Riil"):
     muat_data_riil()
     for _k in list(st.session_state.keys()):
         if _k.startswith("ed_"):
             del st.session_state[_k]
     st.rerun()
-if _b2.button("🧹 Template Kosong"):
-    kosongkan()
-    for _k in list(st.session_state.keys()):
-        if _k.startswith("ed_"):
-            del st.session_state[_k]
-    st.rerun()
-    muat_simulasi()
-    for _k in list(st.session_state.keys()):
-        if _k.startswith("ed_"):
-            del st.session_state[_k]
-    st.rerun()
+
 if _b2.button("🧹 Template Kosong"):
     kosongkan()
     for _k in list(st.session_state.keys()):
