@@ -371,6 +371,88 @@ def muat_pdrb_excel(file_obj):
                 target.iat[idx12, Q_FULL.index(q_str)] += val  # += utk id 13+14
 
     return adhb, adhk
+def muat_book1_csv(file_obj):
+    """
+    Membaca Book1__.csv (PDRB ADHB & ADHK per 12 subkomponen PKRT)
+    dan mengisinya ke E0 (e0_adhb, e0_adhk).
+    """
+    import io as _io
+
+    raw = file_obj.read().decode("utf-8-sig")
+    lines = raw.split("\n")
+
+    # --- Identifikasi baris header & data ---
+    adhb_start = adhk_start = None
+    header_row = None
+
+    for i, line in enumerate(lines):
+        low = line.lower()
+        if "tabel 1" in low and "adhb" in low:
+            adhb_start = i
+        elif "tabel 2" in low and "adhk" in low:
+            adhk_start = i
+        elif "komponen pengeluaran" in low and header_row is None:
+            header_row = i
+
+    if header_row is None or adhb_start is None or adhk_start is None:
+        raise ValueError("Format CSV tidak dikenali. Pastikan ada Tabel 1 (ADHB) dan Tabel 2 (ADHK).")
+
+    # --- Parse header quarter ---
+    hdr_cells = lines[header_row].split(";")
+    q_map = {}  # {quarter_label: col_index}
+    for j, cell in enumerate(hdr_cells):
+        cell = cell.strip()
+        if cell.startswith("Q") and "-" in cell:
+            q_map[cell] = j
+
+    # --- Fungsi bantu: extract 12 baris PKRT dari suatu section ---
+    def extract_section(start_line, end_line):
+        """Ambil 12 subkomponen PKRT (baris yang diawali '1.a' s/d '1.l')."""
+        data = {}
+        for i in range(start_line, min(end_line, len(lines))):
+            cells = lines[i].split(";")
+            if not cells:
+                continue
+            label = cells[0].strip()
+            # Cocokkan dengan pola "1.a." s/d "1.l."
+            for k, prefix in enumerate(["1.a.", "1.b.", "1.c.", "1.d.", "1.e.", "1.f.",
+                                         "1.g.", "1.h.", "1.i.", "1.j.", "1.k.", "1.l."]):
+                if label.startswith(prefix):
+                    row_vals = {}
+                    for qlabel, cidx in q_map.items():
+                        if cidx < len(cells):
+                            try:
+                                val = float(cells[cidx].replace(",", "").replace(".", "").strip())
+                            except (ValueError, IndexError):
+                                val = 0.0
+                            row_vals[qlabel] = val
+                    data[k] = row_vals
+                    break
+        return data
+
+    adhb_data = extract_section(adhb_start, adhk_start)
+    adhk_data = extract_section(adhk_start, len(lines))
+
+    if len(adhb_data) < 12 or len(adhk_data) < 12:
+        raise ValueError(f"Data tidak lengkap. ADHB: {len(adhb_data)} baris, ADHK: {len(adhk_data)} baris. Butuh 12.")
+
+    # --- Konversi ke DataFrame dengan kolom Q_FULL ---
+    def to_dataframe(section_data):
+        df = pd.DataFrame(0.0, index=OLD12, columns=Q_FULL)
+        for div_idx, qvals in section_data.items():
+            for qlabel, val in qvals.items():
+                # qlabel format: "Q1-2018" → "2018Q1"
+                parts = qlabel.split("-")
+                if len(parts) == 2:
+                    q_str = f"{parts[1]}{parts[0]}"  # "2018Q1"
+                    if q_str in Q_FULL:
+                        df.iat[div_idx, Q_FULL.index(q_str)] = val
+        return df
+
+    adhb_df = to_dataframe(adhb_data)
+    adhk_df = to_dataframe(adhk_data)
+
+    return adhb_df, adhk_df
 def init_state():
     S = st.session_state
     if "sumber_data" not in S:
@@ -407,6 +489,24 @@ if _b2.button("🧹 Template Kosong"):
     st.rerun()
 # --- Upload Template PDRB → otomatis isi E0 ---
 _upl_pdrb = st.sidebar.file_uploader("📂 Muat Template PDRB (.xlsx) → E0", type=["xlsx"])
+# --- Upload Book1__.csv → otomatis isi E0 ---
+_upl_book1 = st.sidebar.file_uploader("📄 Muat Book1__.csv → E0 (PDRB 2010=100)", type=["csv"])
+if _upl_book1 is not None:
+    try:
+        _adhb, _adhk = muat_book1_csv(_upl_book1)
+        if _adhb.abs().sum().sum() > 0:
+            S["e0_adhb"] = _adhb
+            S["e0_adhk"] = _adhk
+            S["sumber_data"] = "Book1__.csv (PDRB ADHB/ADHK 2010=100)"
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("ed_"):
+                    del st.session_state[_k]
+            st.sidebar.success("✅ E0 berhasil diisi dari Book1__.csv!")
+            st.rerun()
+        else:
+            st.sidebar.warning("⚠️ File terbaca tapi data PKRT kosong.")
+    except Exception as _e:
+        st.sidebar.error(f"Gagal membaca Book1__.csv: {_e}")
 if _upl_pdrb is not None:
     try:
         _adhb, _adhk = muat_pdrb_excel(_upl_pdrb)
