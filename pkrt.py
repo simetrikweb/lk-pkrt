@@ -10,7 +10,7 @@ import streamlit as st
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter as CL
-
+import cirebon_real_simulation
 st.set_page_config(page_title="LK PKRT & Deflator Kab. Cirebon", page_icon="📊", layout="wide")
 
 # ============================ KONSTANTA ============================
@@ -692,8 +692,9 @@ st.title("📊 Otomasi 2 Lembar Kerja BPS — PKRT & Deflator Kab. Cirebon (2025
 st.caption("WB1: 03. LK Deflator PPKK · WB2: 02. LK PKRT Put0_Rev · Periode fokus: **" + S["periode"] +
            "** · Sumber: **" + S.get("sumber_data", "-") + "**")
 
-tab1, tab2, tab3, tab4 = st.tabs(["📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
-                                  "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
+                                  "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker",
+                                  "🏙️ Simulasi Riil Kab. Cirebon"])
 
 with tab1:
     st.header("Alur kerja 8 langkah")
@@ -828,3 +829,6 @@ with tab4:
         st.download_button("Unduh WB2 — LK Utama PKRT (.xlsx)", export_wb2(W1, W2, checks, rate),
                            file_name="02_LK_PKRT_Triwulanan_2025_100_Cirebon.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with tab5:
+
+        cirebon_real_simulation.render_cirebon_simulation()
