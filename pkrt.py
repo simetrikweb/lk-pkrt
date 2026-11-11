@@ -491,7 +491,6 @@ if _b2.button("🧹 Template Kosong"):
 # --- Upload Template PDRB → otomatis isi E0 ---
 _upl_pdrb = st.sidebar.file_uploader("📂 Muat Template PDRB (.xlsx) → E0", type=["xlsx"])
 # --- Upload Book1__.csv → otomatis isi E0 ---
-_upl_book1 = st.sidebar.file_uploader("📄 Muat Book1__.csv → E0 (PDRB 2010=100)", type=["csv"])
 upl_book1 = st.sidebar.file_uploader(
     "📄 Muat Book1__.csv → E0 (PDRB 2010=100)",
     type=["csv"]
@@ -515,7 +514,6 @@ if upl_book1 is not None:
                         del st.session_state[_k]
 
                 st.session_state.book1_hash = file_hash
-
                 st.sidebar.success("✅ E0 berhasil diisi dari Book1__.csv!")
                 st.rerun()
             else:
@@ -523,8 +521,10 @@ if upl_book1 is not None:
 
         except Exception as e:
             st.sidebar.error(f"Gagal membaca Book1__.csv: {e}")
+
     else:
         st.sidebar.caption("Book1__.csv sudah diproses sebelumnya.")
+
 else:
     st.session_state.pop("book1_hash", None)
         else:
