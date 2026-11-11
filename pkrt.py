@@ -4,6 +4,7 @@
 #  Kab. Cirebon (32.09) | + FITUR SIMPAN/MUAT JSON | perbaikan bug periode
 # =====================================================================
 import io, json
+import hashlib
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -491,18 +492,41 @@ if _b2.button("🧹 Template Kosong"):
 _upl_pdrb = st.sidebar.file_uploader("📂 Muat Template PDRB (.xlsx) → E0", type=["xlsx"])
 # --- Upload Book1__.csv → otomatis isi E0 ---
 _upl_book1 = st.sidebar.file_uploader("📄 Muat Book1__.csv → E0 (PDRB 2010=100)", type=["csv"])
-if _upl_book1 is not None:
-    try:
-        _adhb, _adhk = muat_book1_csv(_upl_book1)
-        if _adhb.abs().sum().sum() > 0:
-            S["e0_adhb"] = _adhb
-            S["e0_adhk"] = _adhk
-            S["sumber_data"] = "Book1__.csv (PDRB ADHB/ADHK 2010=100)"
-            for _k in list(st.session_state.keys()):
-                if _k.startswith("ed_"):
-                    del st.session_state[_k]
-            st.sidebar.success("✅ E0 berhasil diisi dari Book1__.csv!")
-            st.rerun()
+upl_book1 = st.sidebar.file_uploader(
+    "📄 Muat Book1__.csv → E0 (PDRB 2010=100)",
+    type=["csv"]
+)
+
+if upl_book1 is not None:
+    file_bytes = upl_book1.getvalue()
+    file_hash = hashlib.sha1(file_bytes).hexdigest()
+
+    if st.session_state.get("book1_hash") != file_hash:
+        try:
+            _adhb, _adhk = muat_book1_csv(io.BytesIO(file_bytes))
+
+            if _adhb.abs().sum().sum() > 0:
+                S["e0_adhb"] = _adhb
+                S["e0_adhk"] = _adhk
+                S["sumber_data"] = "Book1__.csv (PDRB ADHB/ADHK 2010=100)"
+
+                for _k in list(st.session_state.keys()):
+                    if _k.startswith("ed"):
+                        del st.session_state[_k]
+
+                st.session_state.book1_hash = file_hash
+
+                st.sidebar.success("✅ E0 berhasil diisi dari Book1__.csv!")
+                st.rerun()
+            else:
+                st.sidebar.warning("⚠️ File terbaca tapi data PKRT kosong.")
+
+        except Exception as e:
+            st.sidebar.error(f"Gagal membaca Book1__.csv: {e}")
+    else:
+        st.sidebar.caption("Book1__.csv sudah diproses sebelumnya.")
+else:
+    st.session_state.pop("book1_hash", None)
         else:
             st.sidebar.warning("⚠️ File terbaca tapi data PKRT kosong.")
     except Exception as _e:
