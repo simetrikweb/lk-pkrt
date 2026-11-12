@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# =====================================================================
-#  pkrt.py v2.3 - OTOMASI 2 LEMBAR KERJA BPS (PKRT + DEFLATOR, 2025=100)
-#  Kab. Cirebon (32.09) | + FITUR SIMPAN/MUAT JSON | perbaikan bug periode
-# =====================================================================
+"""
+pkrt.py v2.4 - OTOMASI 2 LEMBAR KERJA BPS (PKRT + DEFLATOR, 2025=100)
+Kab. Cirebon (32.09) | FITUR SIMPAN/MUAT JSON | UPLOAD Book1__.csv & Template PDRB
+Versi bersih: indentasi konsisten, parser angka Indonesia, tampilan format Indonesia.
+"""
 import io, json
 import hashlib
 import numpy as np
@@ -13,6 +14,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter as CL
 import cirebon_real_simulation
 import sut_jabar_bridge
+
 st.set_page_config(page_title="LK PKRT & Deflator Kab. Cirebon", page_icon="📊", layout="wide")
 
 # ============================ KONSTANTA ============================
@@ -44,8 +46,10 @@ TOP = 12
 DF_KEYS = ["e1_ihk", "e2_dasar", "e0_adhb", "e0_adhk", "e1_seruti", "e2_sut", "r8_beta", "i6_admin", "f7_fenomena"]
 SC_KEYS = ["periode", "kode_prov", "kode_kab", "sister", "petugas", "supervisor", "penduduk", "sumber_data"]
 
+
 def R(i):
     return TOP + 4 + i
+
 
 def sdiv(a, b):
     try:
@@ -54,6 +58,7 @@ def sdiv(a, b):
         return a / b
     except Exception:
         return np.nan
+
 
 def _nmean(lst):
     v = [x for x in lst if x is not None and np.isfinite(x)]
@@ -81,6 +86,7 @@ def tabel_id(df, des=2):
     except Exception:
         return df.applymap(lambda v: fmt_id(v, des))
 
+
 # ============================ DATA SIMULASI CIREBON ============================
 SIM_DASAR = [245000, 28500, 4200, 58000, 66500, 215000, 64000, 46500, 124000,
              18500, 57500, 41000, 28500, 86000, 7600, 11400, 38000]
@@ -97,6 +103,7 @@ SIM_F7 = {DIV13[0]: "Harga pangan stabil pasca panen raya beras; efek Ramadan be
           DIV13[10]: "Kuliner Cirebon (empal gentong, tahu gejrot) ramai pasca mudik.",
           DIV13[11]: "FISIM metode triwulanan baru (faktor 1.1007) diterapkan.",
           DIV13[12]: "Harga emas perhiasan naik; konsumsi barang pribadi lainnya meningkat."}
+
 
 def _sim_ihk():
     base = [108.5, 106.2, 121.4, 118.9, 104.8, 112.6, 109.3, 115.7, 113.2,
@@ -127,6 +134,7 @@ def _sim_ihk():
     du = pd.DataFrame([umum.values], index=["IHK Umum"], columns=M_FULL)
     return pd.concat([df, du])
 
+
 def _sim_e0():
     b0 = [185000, 16200, 37800, 132500, 45200, 31800, 60500, 39800, 25400, 22100, 40200, 58600]
     d0 = [128.5, 142.1, 116.4, 124.2, 119.8, 131.6, 117.9, 112.6, 120.4, 133.2, 119.1, 126.8]
@@ -145,6 +153,7 @@ def _sim_e0():
             adhk.iat[i, t] = round(sdiv(v, d) * 100, 1)
     return adhb, adhk
 
+
 def _sim_seruti():
     b13 = [232000, 19800, 45200, 168000, 54800, 20500, 74200, 46800, 30200, 26400, 48600, 39800, 23100]
     cols = [q for q in Q_FULL if q >= "2023Q1"]
@@ -162,6 +171,7 @@ def _sim_seruti():
             df.iat[i, t] = round(v, 1)
     return df
 
+
 def _sim_i6():
     nama = ["Pelanggan PLN rumah tangga (ribu)", "Listrik terjual RT (juta kWh)", "TPK hotel (%)",
             "Penumpang angkutan (juta orang)", "Kendaraan bermotor terdaftar (ribu)", "Transaksi QRIS (juta transaksi)"]
@@ -176,6 +186,7 @@ def _sim_i6():
             df.iat[i, t] = round(v, 2)
     return df
 
+
 def muat_simulasi():
     S = st.session_state
     S["e1_ihk"] = _sim_ihk()
@@ -186,7 +197,9 @@ def muat_simulasi():
     S["e1_seruti"] = ser
     c25 = [c for c in ser.columns if c.startswith("2025")]
     S["e2_sut"] = pd.DataFrame({"SUT 2025 (Rp Juta)": [round(ser.loc[d, c25].sum() * f, 1)
-                               for d, f in zip(DIV13, [1.03, 1.02, 1.04, 1.02, 1.03, 1.05, 1.02, 1.01, 1.04, 1.03, 1.06, 1.02, 1.03])]}, index=DIV13)
+                                                      for d, f in zip(DIV13, [1.03, 1.02, 1.04, 1.02, 1.03, 1.05,
+                                                                              1.02, 1.01, 1.04, 1.03, 1.06, 1.02, 1.03])]},
+                               index=DIV13)
     S["r8_beta"] = pd.DataFrame(1.0, index=DIV13, columns=Q_FULL)
     S["i6_admin"] = _sim_i6()
     S["f7_fenomena"] = pd.DataFrame([SIM_F7.get(d, "") for d in DIV13],
@@ -197,6 +210,7 @@ def muat_simulasi():
     S["petugas"], S["supervisor"] = "Statistikian BPS Kab. Cirebon", "Kasubag IP"
     S["sumber_data"] = "Simulasi Kab. Cirebon"
 
+
 def kosongkan():
     S = st.session_state
     S["e1_ihk"] = pd.DataFrame(np.nan, index=SUB17 + ["IHK Umum"], columns=M_FULL)
@@ -206,41 +220,42 @@ def kosongkan():
     S["e1_seruti"] = pd.DataFrame(np.nan, index=DIV13, columns=[q for q in Q_FULL if q >= "2023Q1"])
     S["e2_sut"] = pd.DataFrame(0.0, index=DIV13, columns=["SUT 2025 (Rp Juta)"])
     S["r8_beta"] = pd.DataFrame(1.0, index=DIV13, columns=Q_FULL)
-    S["i6_admin"] = pd.DataFrame(np.nan, index=["Pelanggan PLN rumah tangga (ribu)", "Listrik terjual RT (juta kWh)", "TPK hotel (%)", "Penumpang angkutan (juta orang)", "Kendaraan bermotor terdaftar (ribu)", "Transaksi QRIS (juta transaksi)"], columns=Q_FULL)
+    S["i6_admin"] = pd.DataFrame(np.nan,
+                                 index=["Pelanggan PLN rumah tangga (ribu)", "Listrik terjual RT (juta kWh)", "TPK hotel (%)",
+                                        "Penumpang angkutan (juta orang)", "Kendaraan bermotor terdaftar (ribu)",
+                                        "Transaksi QRIS (juta transaksi)"], columns=Q_FULL)
     S["f7_fenomena"] = pd.DataFrame("", index=DIV13, columns=["Fenomena triwulan berjalan"])
     S["sumber_data"] = "Template kosong (input manual)"
-# ============================ DATA RIIL CIREBON (dari cirebon_real_simulation.py) ============================
-# Peta 17 subkomponen (SUB17) -> indeks 13 COICOP
-SUB17_TO_COICOP = {0:0, 1:0, 2:1, 3:1, 4:2, 5:3, 6:4, 7:5, 8:6,
-                   9:7, 10:7, 11:8, 12:9, 13:10, 14:11, 15:11, 16:12}
 
-def _code(ci):                 # indeks COICOP 0-12 -> kode string "01".."13"
+
+# ============================ DATA RIIL CIREBON ============================
+SUB17_TO_COICOP = {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6,
+                   9: 7, 10: 7, 11: 8, 12: 9, 13: 10, 14: 11, 15: 11, 16: 12}
+
+
+def _code(ci):
     return f"{ci+1:02d}"
 
-def _q_of_month(m):            # "2024M5" -> "2024Q2"
+
+def _q_of_month(m):
     y, mo = m.split("M")
     return f"{y}Q{(int(mo)-1)//3 + 1}"
 
+
 def muat_data_riil():
-    """Isi lembar kerja dengan DATA RIIL BPS Kab. Cirebon.
-    Seruti 2023Q1-2026Q2 | IHK Kota Cirebon (2025=100) | Penduduk proyeksi."""
+    """Isi lembar kerja dengan DATA RIIL BPS Kab. Cirebon."""
     try:
         import cirebon_real_simulation as crs
         POP, IHK, SERUTI = crs.POPULATION_CIREBON, crs.DEFLATOR_IHK_2025, crs.SERUTI_PERKAPITA
     except Exception as e:
         st.error(f"Gagal memuat data riil. Pastikan cirebon_real_simulation.py ada & berisi dataset. Detail: {e}")
         return
-
     S = st.session_state
-
-    # ---------- E1 (WB1): IHK bulanan 17 subkomponen, diambil dari IHK triwulanan riil ----------
     rows = {}
     for s in range(17):
         code = _code(SUB17_TO_COICOP[s])
         rows[SUB17[s]] = [IHK.get(code, {}).get(_q_of_month(m), np.nan) for m in M_FULL]
     df_ihk = pd.DataFrame(rows, index=M_FULL).T
-
-    # bobot divisi dari struktur pengeluaran riil 2023 (untuk IHK Umum)
     q23 = ["2023Q1", "2023Q2", "2023Q3", "2023Q4"]
     mean_pk = {}
     for ci in range(13):
@@ -248,7 +263,6 @@ def muat_data_riil():
         mean_pk[ci] = float(np.mean(vs)) if vs else 0.0
     div_w = np.array([mean_pk[i] for i in range(13)], dtype=float)
     div_w = div_w / div_w.sum() if div_w.sum() > 0 else div_w
-
     umum = np.full(len(M_FULL), np.nan)
     for j, m in enumerate(M_FULL):
         q = _q_of_month(m)
@@ -261,27 +275,21 @@ def muat_data_riil():
         umum[j] = num / den if den > 0 else np.nan
     df_ihk.loc["IHK Umum"] = umum
     S["e1_ihk"] = df_ihk
-
-    # ---------- E2 (WB1): bobot konsumsi dasar dari struktur pengeluaran riil 2023 ----------
     dasar = np.zeros(17)
     for s in range(17):
         ci = SUB17_TO_COICOP[s]
         n_sub = sum(1 for x in range(17) if SUB17_TO_COICOP[x] == ci)
         dasar[s] = mean_pk[ci] / n_sub
     S["e2_dasar"] = pd.DataFrame(dasar, index=SUB17, columns=["Nilai Konsumsi Dasar (Rp Juta)"])
-
-    # ---------- E1 (WB2): Seruti agregat riil = perkapita x penduduk (Rp Juta) ----------
     ser_cols = [q for q in Q_FULL if q >= "2023Q1"]
     df_ser = pd.DataFrame(np.nan, index=DIV13, columns=ser_cols)
     for d in range(13):
         for q in ser_cols:
-            pk  = SERUTI.get(_code(d), {}).get(q, np.nan)
+            pk = SERUTI.get(_code(d), {}).get(q, np.nan)
             pop = POP.get(q, np.nan)
             if np.isfinite(pk) and np.isfinite(pop):
                 df_ser.iat[d, ser_cols.index(q)] = pk * pop / 1e6
     S["e1_seruti"] = df_ser
-
-    # ---------- E2 (WB2): SUT 2025 = total Seruti 2025 (theta awal = 1 / netral) ----------
     c25 = [q for q in ser_cols if q.startswith("2025")]
     sut = []
     for d in range(13):
@@ -289,69 +297,36 @@ def muat_data_riil():
         tot = df_ser.loc[DIV13[d], ada].sum() if ada else np.nan
         sut.append(round(float(tot), 1) if np.isfinite(tot) else 0.0)
     S["e2_sut"] = pd.DataFrame({"SUT 2025 (Rp Juta)": sut}, index=DIV13)
-
-    # ---------- E0 rilis 2010=100 : TIDAK tersedia pada data riil -> dikosongkan ----------
     S["e0_adhb"] = pd.DataFrame(np.nan, index=OLD12, columns=Q_FULL)
     S["e0_adhk"] = pd.DataFrame(np.nan, index=OLD12, columns=Q_FULL)
-
-    # ---------- R8 beta, I6, F7 : default ----------
     S["r8_beta"] = pd.DataFrame(1.0, index=DIV13, columns=Q_FULL)
     S["i6_admin"] = pd.DataFrame(np.nan,
-        index=["Pelanggan PLN rumah tangga (ribu)", "Listrik terjual RT (juta kWh)", "TPK hotel (%)",
-               "Penumpang angkutan (juta orang)", "Kendaraan bermotor terdaftar (ribu)",
-               "Transaksi QRIS (juta transaksi)"], columns=Q_FULL)
+                                 index=["Pelanggan PLN rumah tangga (ribu)", "Listrik terjual RT (juta kWh)", "TPK hotel (%)",
+                                        "Penumpang angkutan (juta orang)", "Kendaraan bermotor terdaftar (ribu)",
+                                        "Transaksi QRIS (juta transaksi)"], columns=Q_FULL)
     S["f7_fenomena"] = pd.DataFrame(
         ["Data riil Seruti & IHK Kota Cirebon; lengkapi fenomena sesuai rilis BRS BPS." for _ in DIV13],
         index=DIV13, columns=["Fenomena triwulan berjalan"])
-
-    # ---------- identitas ----------
-    S["periode"]  = "2026-Q2"
+    S["periode"] = "2026-Q2"
     S["penduduk"] = int(POP.get("2026Q2", 2431927))
     S["kode_prov"], S["kode_kab"], S["sister"] = "32", "09", "74"
     S["petugas"], S["supervisor"] = "Statistikian BPS Kab. Cirebon", "Kasubag IP"
-    S["sumber_data"] = "DATA RIIL BPS Kab. Cirebon (Seruti 2023Q1–2026Q2 & IHK Kota Cirebon 2025=100)"    
-# ============================ IMPORT PDRB EXCEL → E0 ============================
+    S["sumber_data"] = "DATA RIIL BPS Kab. Cirebon (Seruti 2023Q1-2026Q2 & IHK Kota Cirebon 2025=100)"
+
+
+# ============================ IMPORT PDRB EXCEL -> E0 ============================
 def muat_pdrb_excel(file_obj):
-    """
-    Membaca Template Upload PDRB (.xlsx) dan memetakan otomatis
-    baris 1.a–1.m ke 12 Divisi COICOP di E0 (ADHB & ADHK).
-    
-    Mapping:
-      id 2–12  → OLD12[0..10]  (1-to-1)
-      id 13+14 → OLD12[11]     (dijumlahkan: Jasa Keuangan + Perawatan diri)
-    """
-    import re, io as _io
-
-    # --- PETA: id Excel → index OLD12 ---
-    MAP_ID = {
-        2: 0,   # 1.a Makanan & Minuman tidak beralkohol
-        3: 1,   # 1.b Minuman Beralkohol & Tembakau
-        4: 2,   # 1.c Pakaian & Alas Kaki
-        5: 3,   # 1.d Perumahan, Air, Listrik, Gas...
-        6: 4,   # 1.e Furnitur & Perlengkapan RT
-        7: 5,   # 1.f Kesehatan
-        8: 6,   # 1.g Transportasi
-        9: 7,   # 1.h Informasi & Komunikasi → "Komunikasi"
-        10: 8,  # 1.i Rekreasi, Olahraga, Kebudayaan
-        11: 9,  # 1.j Jasa Pendidikan
-        12: 10, # 1.k Restoran & Jasa Akomodasi
-        13: 11, # 1.l Jasa Keuangan & Asuransi   ─┐
-        14: 11, # 1.m Perawatan diri & Jasa lainnya ─┴→ OLD12[11]
-    }
-
-    # Simpan bytes agar bisa dibaca 2x (ADHB & ADHK)
+    """Membaca Template Upload PDRB (.xlsx) dan memetakan baris 1.a-1.m ke 12 Divisi COICOP."""
+    import re
+    MAP_ID = {2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6, 9: 7, 10: 8, 11: 9, 12: 10, 13: 11, 14: 11}
     raw = file_obj.read()
-
     adhb = pd.DataFrame(0.0, index=OLD12, columns=Q_FULL)
     adhk = pd.DataFrame(0.0, index=OLD12, columns=Q_FULL)
-
     for sheet, target in [("ADHB", adhb), ("ADHK", adhk)]:
         try:
-            df = pd.read_excel(_io.BytesIO(raw), sheet_name=sheet, header=None)
+            df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet, header=None)
         except Exception:
             continue
-
-        # --- Cari baris header otomatis ---
         hdr = None
         for i in range(min(10, len(df))):
             vals = [str(v).strip().lower() for v in df.iloc[i].tolist()]
@@ -360,8 +335,6 @@ def muat_pdrb_excel(file_obj):
                 break
         if hdr is None:
             continue
-
-        # --- Identifikasi kolom id & kolom quarter ---
         cols = df.iloc[hdr].tolist()
         id_col, q_cols = None, {}
         for j, c in enumerate(cols):
@@ -370,11 +343,8 @@ def muat_pdrb_excel(file_obj):
                 id_col = j
             elif re.match(r"20\d{2}q[1-4]", cs):
                 q_cols[cs.upper()] = j
-
         if id_col is None or not q_cols:
             continue
-
-        # --- Isi DataFrame target ---
         for _, row in df.iloc[hdr + 1:].iterrows():
             try:
                 rid = int(float(row.iloc[id_col]))
@@ -382,7 +352,6 @@ def muat_pdrb_excel(file_obj):
                 continue
             if rid not in MAP_ID:
                 continue
-
             idx12 = MAP_ID[rid]
             for q_str, cj in q_cols.items():
                 if q_str not in Q_FULL:
@@ -391,14 +360,13 @@ def muat_pdrb_excel(file_obj):
                     val = float(str(row.iloc[cj]).replace(",", ""))
                 except (ValueError, TypeError):
                     val = 0.0
-                target.iat[idx12, Q_FULL.index(q_str)] += val  # += utk id 13+14
-
+                target.iat[idx12, Q_FULL.index(q_str)] += val
     return adhb, adhk
+
+
+# ============================ IMPORT Book1__.csv -> E0 ============================
 def muat_book1_csv(file_obj):
-    """
-    Membaca Book1__.csv (PDRB ADHB & ADHK per 12 subkomponen PKRT)
-    dan mengisinya ke E0 (e0_adhb, e0_adhk).
-    """
+    """Membaca Book1__.csv (PDRB ADHB & ADHK per 12 subkomponen PKRT)."""
     raw = file_obj.read().decode("utf-8-sig")
     lines = raw.split("\n")
 
@@ -423,10 +391,19 @@ def muat_book1_csv(file_obj):
         if cell.startswith("Q") and "-" in cell:
             q_map[cell] = j
 
+    def parse_angka(txt):
+        txt = txt.strip()
+        if "," in txt:
+            return float(txt.replace(".", "").replace(",", "."))
+        if txt in ("", "-"):
+            return 0.0
+        return float(txt.replace(".", ""))
+
     def extract_section(start_line, end_line):
-        """Ambil 12 subkomponen PKRT (baris yang diawali '1.a' s/d '1.l')."""
         data = {}
         for i in range(start_line, min(end_line, len(lines))):
+            if len(data) == 12:
+                break
             cells = lines[i].split(";")
             if not cells:
                 continue
@@ -438,25 +415,15 @@ def muat_book1_csv(file_obj):
                     for qlabel, cidx in q_map.items():
                         if cidx < len(cells):
                             try:
-                                txt = cells[cidx].strip()
-                                if "," in txt:
-                                    val = float(txt.replace(".", "").replace(",", "."))
-                                elif txt in ("", "-"):
-                                    val = 0.0
-                                else:
-                                    val = float(txt.replace(".", ""))
+                                row_vals[qlabel] = parse_angka(cells[cidx])
                             except (ValueError, IndexError):
-                                val = 0.0
-                            row_vals[qlabel] = val
+                                row_vals[qlabel] = 0.0
                     data[k] = row_vals
                     break
-            if len(data) == 12:
-                break
         return data
 
     adhb_data = extract_section(adhb_start, adhk_start)
     adhk_data = extract_section(adhk_start, len(lines))
-
     if len(adhb_data) < 12 or len(adhk_data) < 12:
         raise ValueError(f"Data tidak lengkap. ADHB: {len(adhb_data)} baris, ADHK: {len(adhk_data)} baris. Butuh 12.")
 
@@ -471,100 +438,86 @@ def muat_book1_csv(file_obj):
                         df.iat[div_idx, Q_FULL.index(q_str)] = val
         return df
 
-    adhb_df = to_dataframe(adhb_data)
-    adhk_df = to_dataframe(adhk_data)
-    return adhb_df, adhk_df
+    return to_dataframe(adhb_data), to_dataframe(adhk_data)
+
+
 def init_state():
     S = st.session_state
     if "sumber_data" not in S:
         muat_simulasi()
 
+
 init_state()
 S = st.session_state
 
-# ============================ SIDEBAR + PERIODE (BUG FIX) ============================
+# ============================ SIDEBAR + PERIODE ============================
 st.sidebar.title("🧭 Konfigurasi & Sumber Data")
 
-# ---- 1) Tombol & uploader DULU (sebelum widget ber-key dibuat) ----
 _b1, _b3, _b2 = st.sidebar.columns(3)
-
 if _b1.button("🎲 Muat Simulasi"):
     muat_simulasi()
     for _k in list(st.session_state.keys()):
-        if _k.startswith("ed_"):
+        if _k.startswith("ed"):
             del st.session_state[_k]
     st.rerun()
-
 if _b3.button("📊 Data Riil"):
     muat_data_riil()
     for _k in list(st.session_state.keys()):
-        if _k.startswith("ed_"):
+        if _k.startswith("ed"):
             del st.session_state[_k]
     st.rerun()
-
 if _b2.button("🧹 Template Kosong"):
     kosongkan()
     for _k in list(st.session_state.keys()):
-        if _k.startswith("ed_"):
+        if _k.startswith("ed"):
             del st.session_state[_k]
     st.rerun()
-# --- Upload Template PDRB → otomatis isi E0 ---
-_upl_pdrb = st.sidebar.file_uploader("📂 Muat Template PDRB (.xlsx) → E0", type=["xlsx"])
-# --- Upload Book1__.csv → otomatis isi E0 ---
-# --- Upload Book1__.csv → otomatis isi E0 ---
-upl_book1 = st.sidebar.file_uploader(
-    "📄 Muat Book1__.csv → E0 (PDRB 2010=100)",
-    type=["csv"]
-)
 
+_upl_pdrb = st.sidebar.file_uploader("📂 Muat Template PDRB (.xlsx) → E0", type=["xlsx"])
+
+upl_book1 = st.sidebar.file_uploader("📄 Muat Book1__.csv → E0 (PDRB 2010=100)", type=["csv"])
 if upl_book1 is not None:
     file_bytes = upl_book1.getvalue()
     file_hash = hashlib.sha1(file_bytes).hexdigest()
-
     if st.session_state.get("book1_hash") != file_hash:
         try:
             _adhb, _adhk = muat_book1_csv(io.BytesIO(file_bytes))
-
             if _adhb.abs().sum().sum() > 0:
                 S["e0_adhb"] = _adhb
                 S["e0_adhk"] = _adhk
                 S["sumber_data"] = "Book1__.csv (PDRB ADHB/ADHK 2010=100)"
-
                 for _k in list(st.session_state.keys()):
                     if _k.startswith("ed"):
                         del st.session_state[_k]
-
                 st.session_state["book1_hash"] = file_hash
                 st.sidebar.success("✅ E0 berhasil diisi dari Book1__.csv!")
                 st.rerun()
             else:
                 st.sidebar.warning("⚠️ File terbaca tapi data PKRT kosong.")
-
         except Exception as e:
             st.sidebar.error(f"Gagal membaca Book1__.csv: {e}")
-
     else:
         st.sidebar.caption("Book1__.csv sudah diproses sebelumnya.")
-
 else:
     st.session_state.pop("book1_hash", None)
+
 if _upl_pdrb is not None:
     try:
         _adhb, _adhk = muat_pdrb_excel(_upl_pdrb)
-        # Validasi: cek apakah ada data yang terbaca
         if _adhb.abs().sum().sum() > 0:
             S["e0_adhb"] = _adhb
             S["e0_adhk"] = _adhk
             S["sumber_data"] = "Template PDRB Kab. Cirebon (Excel upload)"
             for _k in list(st.session_state.keys()):
-                if _k.startswith("ed_"):
+                if _k.startswith("ed"):
                     del st.session_state[_k]
             st.sidebar.success("✅ E0 berhasil diisi dari Template PDRB!")
             st.rerun()
         else:
-            st.sidebar.warning("⚠️ File terbaca tapi data PKRT (id 2–14) kosong.")
+            st.sidebar.warning("⚠️ File terbaca tapi data PKRT (id 2-14) kosong.")
     except Exception as _e:
         st.sidebar.error(f"Gagal membaca Template PDRB: {_e}")
+
 _upl = st.sidebar.file_uploader("⬆️ Muat file JSON", type=["json"])
 if _upl is not None:
     try:
@@ -576,24 +529,23 @@ if _upl is not None:
             if _k in _d:
                 S[_k] = _d[_k]
         for _k in list(st.session_state.keys()):
-            if _k.startswith("ed_"):
+            if _k.startswith("ed"):
                 del st.session_state[_k]
         st.sidebar.success("✅ Data berhasil dimuat!")
         st.rerun()
     except Exception as _e:
         st.sidebar.error(f"Gagal memuat file: {_e}")
 
-# ---- 2) Baru buat widget ber-key (aman: semua mutasi sudah selesai) ----
 PER_OPT = [f"{q[:4]}-Q{q[-1]}" for q in Q_FULL if q >= "2024Q1"]
 if S["periode"] not in PER_OPT:
     S["periode"] = PER_OPT[-1]
 st.sidebar.selectbox("Periode estimasi (YYYY-QQ)", PER_OPT,
                      index=PER_OPT.index(S["periode"]), key="periode")
 st.sidebar.caption("Kab. Cirebon (32.09) · Sister city Kota Cirebon (74) · Tahun dasar 2025=100")
-st.sidebar.caption("Sumber aktif: **" + S.get("sumber_data", "-") + "**")
-
+st.sidebar.caption("Sumber aktif: " + S.get("sumber_data", "-"))
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 💾 Simpan / Muat Pekerjaan")
+
 
 def _kumpul_state():
     out = {k: S[k].to_dict(orient="split") for k in DF_KEYS if k in S}
@@ -602,10 +554,11 @@ def _kumpul_state():
             out[k] = S[k]
     return out
 
+
 _json = json.dumps(_kumpul_state(), ensure_ascii=False, indent=2).encode("utf-8")
 st.sidebar.download_button("⬇️ Unduh JSON (simpan semua input)", _json,
                            file_name="data_pkrt_cirebon.json", mime="application/json")
-st.sidebar.caption("JSON berisi seluruh input (E0, E1, E2, I6, F7, R8, identitas). Hasil hitungan & export dihitung ulang otomatis.")
+st.sidebar.caption("JSON berisi seluruh input (E0, E1, E2, I6, F7, R8, identitas).")
 
 PQ = S["periode"].replace("-", "")
 Q_ACT = [q for q in Q_FULL if q <= PQ]
@@ -613,6 +566,7 @@ NQ = len(Q_ACT)
 M_END = PQ[:4] + "M" + str(int(PQ[-1]) * 3)
 M_ACT = [m for m in M_FULL if m <= M_END]
 NM = len(M_ACT)
+
 
 # ============================ MESIN WB1 ============================
 def compute_wb1():
@@ -652,6 +606,7 @@ def compute_wb1():
     else:
         q25 = q25 * np.nan
     return dict(m13=m13, umum=umum_m, q22=q22, q25=q25)
+
 
 # ============================ MESIN WB2 ============================
 def compute_wb2(W1):
@@ -710,10 +665,12 @@ def compute_wb2(W1):
     return dict(ipd=ipd, ser=ser, theta=theta, e3=e3, cpi=cpi, e5=e5,
                 r9=r9, r10=r10, a11n=a11n, a11k=a11k, a12n=a12n, a12k=a12k)
 
+
 def growths(df):
     q = df.div(df.shift(1, axis=1)) * 100 - 100
     y = df.div(df.shift(4, axis=1)) * 100 - 100
     return q, y
+
 
 # ============================ QC 22 BUTIR ============================
 QC_ITEMS = [
@@ -740,6 +697,7 @@ QC_ITEMS = [
     ("Antarwilayah", "Pola konsisten dengan wilayah terdekat?", "Eksternal"),
     ("Jangka panjang", "Tren wajar thd pertumbuhan ekonomi & penduduk?", "Eksternal")]
 
+
 def run_qc(W2, W1):
     t = NQ - 1
     r9, r10, cpi = W2["r9"], W2["r10"], W2["cpi"]
@@ -747,6 +705,7 @@ def run_qc(W2, W1):
     tot_n, tot_k = r9.sum(axis=0), r10.sum(axis=0)
     ipd_tot = tot_n / tot_k.replace(0, np.nan) * 100
     checks = []
+
     def safe(fn, default=True):
         try:
             v = fn()
@@ -755,6 +714,7 @@ def run_qc(W2, W1):
             return bool(v)
         except Exception:
             return default
+
     share = r9.iloc[:, t] / tot_n.iat[t] if tot_n.iat[t] else r9.iloc[:, t] * np.nan
     share_p = r9.iloc[:, t - 1] / tot_n.iat[t - 1] if t > 0 and tot_n.iat[t - 1] else share
     ok = [
@@ -764,9 +724,11 @@ def run_qc(W2, W1):
         safe(lambda: float(q.iloc[:, t].abs().max()) < 8 if t else True),
         safe(lambda: float(y.iloc[:, t].abs().max()) < 12 if t >= 4 else True),
         True,
-        safe(lambda: not (((W1["q25"].iat[13, t] - W1["q25"].iat[13, t - 1]) > 0) ^ ((ipd_tot.iat[t] - ipd_tot.iat[t - 1]) > 0)) if t else True),
+        safe(lambda: not (((W1["q25"].iat[13, t] - W1["q25"].iat[13, t - 1]) > 0) ^
+                           ((ipd_tot.iat[t] - ipd_tot.iat[t - 1]) > 0)) if t else True),
         safe(lambda: abs(tot_n.iat[t] - r9.iloc[:, t].sum()) < 1e-6),
-        safe(lambda: abs(sdiv(r9.iloc[:, [i for i, qq in enumerate(Q_ACT) if qq.startswith('2025')]].sum().sum(), S["e2_sut"].iloc[:, 0].sum()) - 1) < 0.05),
+        safe(lambda: abs(sdiv(r9.iloc[:, [i for i, qq in enumerate(Q_ACT) if qq.startswith('2025')]].sum().sum(),
+                              S["e2_sut"].iloc[:, 0].sum()) - 1) < 0.05),
         safe(lambda: float(y.iloc[:, t].abs().max()) <= 15 if t >= 4 else True),
         True, True, True, True, True,
         safe(lambda: bool((S["f7_fenomena"].iloc[:, 0].astype(str).str.len() > 5).all())),
@@ -784,13 +746,16 @@ def run_qc(W2, W1):
     rate = sum(1 for c in checks if c["Respon"] == "Ya") / 22 * 100
     return checks, rate
 
+
 # ============================ EKSPOR EXCEL ============================
 HDR = Font(bold=True)
 TIT = Font(bold=True, size=13)
 
+
 def sheet_base(wb, name, title, sub):
     ws = wb.create_sheet(name)
-    ws["A1"] = title; ws["A1"].font = TIT
+    ws["A1"] = title
+    ws["A1"].font = TIT
     ws["A2"] = sub
     info = [("Kode Provinsi", S["kode_prov"]), ("Kode Kab/Kota", S["kode_kab"]),
             ("Sister city", S["sister"]), ("Periode", S["periode"]),
@@ -798,8 +763,11 @@ def sheet_base(wb, name, title, sub):
             ("Supervisor", S["supervisor"])]
     r = 4
     for k, v in info:
-        ws.cell(r, 1, k); ws.cell(r, 3, v); r += 1
+        ws.cell(r, 1, k)
+        ws.cell(r, 3, v)
+        r += 1
     return ws
+
 
 def q_header(ws, blocks):
     starts, c = [], 3
@@ -810,15 +778,19 @@ def q_header(ws, blocks):
             ws.cell(TOP + 1, c + t, Q_ACT[t][:4])
             ws.cell(TOP + 3, c + t, Q_ACT[t])
         c += n + 1
-    ws.cell(TOP + 3, 1, "Kode"); ws.cell(TOP + 3, 2, "COICOP")
+    ws.cell(TOP + 3, 1, "Kode")
+    ws.cell(TOP + 3, 2, "COICOP")
     return starts
+
 
 def m_header(ws, title):
     ws.cell(TOP, 3, title).font = HDR
     for j in range(NM):
         ws.cell(TOP + 1, 3 + j, M_ACT[j])
-    ws.cell(TOP + 3, 1, "No."); ws.cell(TOP + 3, 2, "Rincian")
+    ws.cell(TOP + 3, 1, "No.")
+    ws.cell(TOP + 3, 2, "Rincian")
     return 3
+
 
 def write_growth(ws, row, vc, qc0, yc0, cc0):
     for t in range(1, NQ):
@@ -830,35 +802,53 @@ def write_growth(ws, row, vc, qc0, yc0, cc0):
                 f"=IF(SUM({CL(vc+t-7)}{row}:{CL(vc+t-4)}{row})=0,NA(),"
                 f"(SUM({CL(vc+t-3)}{row}:{CL(vc+t)}{row})/SUM({CL(vc+t-7)}{row}:{CL(vc+t-4)}{row})-1)*100)")
 
+
+def _rapikan_format(wb):
+    for _ws in wb.worksheets:
+        for _row in _ws.iter_rows():
+            for _c in _row:
+                if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
+                    _c.number_format = "#,##0.00"
+                elif isinstance(_c.value, str) and _c.value.startswith("="):
+                    _c.number_format = "#,##0.00"
+
+
 def export_wb1(W1):
-    wb = Workbook(); wb.remove(wb.active)
+    wb = Workbook()
+    wb.remove(wb.active)
     ws = sheet_base(wb, "Home", "Deflator PKRT Triwulanan", "PDRB (2025=100) - Kab. Cirebon")
     r = TOP
     for a, b in [("E1", "IHK bulanan subkomponen (2022=100)"), ("E2", "Bobot COICOP (SBH 2022)"),
                  ("E3", "IHK bulanan 13 COICOP"), ("E4", "IHK triwulanan 2022=100"),
                  ("E5", "IHK triwulanan 2025=100 -> E4 WB2")]:
-        ws.cell(r, 1, a); ws.cell(r, 3, b); r += 1
+        ws.cell(r, 1, a)
+        ws.cell(r, 3, b)
+        r += 1
     ws = sheet_base(wb, "E1", "Input IHK bulanan subkomponen 2022=100", "")
     c0 = m_header(ws, "Indeks bulanan")
     for i, nm in enumerate(SUB17 + ["IHK Umum"]):
-        ws.cell(R(i), 1, i + 1 if i < 17 else "00"); ws.cell(R(i), 2, nm)
+        ws.cell(R(i), 1, i + 1 if i < 17 else "00")
+        ws.cell(R(i), 2, nm)
         for j in range(NM):
             v = S["e1_ihk"].loc[nm, M_ACT[j]]
             if not pd.isna(v):
                 ws.cell(R(i), c0 + j, float(v))
     ws = sheet_base(wb, "E2", "Bobot COICOP (Diagram Timbang SBH 2022)", "")
-    ws.cell(TOP, 3, "Nilai Konsumsi Dasar (Rp Juta)"); ws.cell(TOP, 4, "Bobot COICOP")
+    ws.cell(TOP, 3, "Nilai Konsumsi Dasar (Rp Juta)")
+    ws.cell(TOP, 4, "Bobot COICOP")
     for i, nm in enumerate(SUB17):
-        ws.cell(R(i), 1, i + 1); ws.cell(R(i), 2, nm)
+        ws.cell(R(i), 1, i + 1)
+        ws.cell(R(i), 2, nm)
         ws.cell(R(i), 3, float(S["e2_dasar"].iat[i, 0]))
     for d, subs in {**SPLIT, **{k: [v] for k, v in SINGLE.items()}}.items():
-        rng = ",".join(f"D{R(s)}" for s in subs)
+        rng = ", ".join(f"D{R(s)}" for s in subs)
         for s in subs:
             ws.cell(R(s), 4, f"=IF(SUM({rng})=0,NA(),C{R(s)}/SUM({rng}))")
     ws = sheet_base(wb, "E3", "IHK bulanan 13 COICOP 2022=100", "")
     c0 = m_header(ws, "Indeks bulanan")
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         subs = SPLIT[d] if d in SPLIT else [SINGLE[d]]
         for j in range(NM):
             cm = CL(c0 + j)
@@ -869,7 +859,8 @@ def export_wb1(W1):
                 ws.cell(R(d), c0 + j,
                         f"=IF(SUM(E2!D{r1},E2!D{r2})=0,NA(),"
                         f"(E2!D{r1}*E1!{cm}{r1}+E2!D{r2}*E1!{cm}{r2})/SUM(E2!D{r1},E2!D{r2}))")
-    ws.cell(R(13), 1, "00"); ws.cell(R(13), 2, "IHK Umum")
+    ws.cell(R(13), 1, "00")
+    ws.cell(R(13), 2, "IHK Umum")
     for j in range(NM):
         ws.cell(R(13), c0 + j, f"=E1!{CL(c0+j)}{R(17)}")
     ws = sheet_base(wb, "E4", "IHK triwulanan COICOP 2022=100 (rata-rata 3 bulan)", "")
@@ -895,17 +886,15 @@ def export_wb1(W1):
             else:
                 rng = f"E4!{CL(c25[0])}{R(d)}:{CL(c25[-1])}{R(d)}"
                 ws.cell(R(d), vc + t, f"=IF(AVERAGE({rng})=0,NA(),E4!{CL(vc+t)}{R(d)}/AVERAGE({rng})*100)")
-    for _ws in wb.worksheets:
-        for _row in _ws.iter_rows():
-            for _c in _row:
-                if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
-                    _c.number_format = "#,##0.00"
-                elif isinstance(_c.value, str) and _c.value.startswith("="):
-                    _c.number_format = "#,##0.00"
-    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+    _rapikan_format(wb)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
 
 def export_wb2(W1, W2, checks, rate):
-    wb = Workbook(); wb.remove(wb.active)
+    wb = Workbook()
+    wb.remove(wb.active)
     ws = sheet_base(wb, "Home", "PKRT Triwulanan", "PDRB (2025=100) - Kab. Cirebon")
     r = TOP
     for a, b in [("E0", "PKRT rilis 2010=100 (input)"), ("E1", "Seruti + backcasting"),
@@ -914,11 +903,14 @@ def export_wb2(W1, W2, checks, rate):
                  ("I6", "Indikator administratif"), ("F7", "Fenomena kualitatif"),
                  ("R8", "Balancing factor Beta"), ("R9", "ADHB final"), ("R10", "ADHK final"),
                  ("A11", "7 subkomponen"), ("A12", "Konsumsi per kapita"), ("QC", "22 pemeriksaan")]:
-        ws.cell(r, 1, a); ws.cell(r, 3, b); r += 1
+        ws.cell(r, 1, a)
+        ws.cell(r, 3, b)
+        r += 1
     ws = sheet_base(wb, "E0", "PKRT rilis 2010=100 (input)", "")
     vb, kb, pb = q_header(ws, [("Harga berlaku", NQ), ("Harga konstan", NQ), ("Indeks implisit", NQ)])
     for i in range(12):
-        ws.cell(R(i), 1, f"{i+1:02d}"); ws.cell(R(i), 2, OLD12[i])
+        ws.cell(R(i), 1, f"{i+1:02d}")
+        ws.cell(R(i), 2, OLD12[i])
         for t in range(NQ):
             ws.cell(R(i), vb + t, float(S["e0_adhb"].iat[i, t]))
             ws.cell(R(i), kb + t, float(S["e0_adhk"].iat[i, t]))
@@ -926,7 +918,8 @@ def export_wb2(W1, W2, checks, rate):
     ws = sheet_base(wb, "E1", "Seruti agregat tertimbang + backcasting", "")
     vc = q_header(ws, [("Nilai agregat", NQ)])[0]
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         for t, qq in enumerate(Q_ACT):
             if qq >= "2023Q1" and qq in S["e1_seruti"].columns:
                 v = S["e1_seruti"].loc[DIV13[d], qq]
@@ -940,24 +933,36 @@ def export_wb2(W1, W2, checks, rate):
     ws.cell(TOP + 6, 3, "Catatan: 2019Q1-2022Q4 di-backcasting menggunakan PKRT rilis harga berlaku 2010=100")
     ws = sheet_base(wb, "Help", "Konstanta metodologi BPS", "")
     ws.cell(TOP, 1, "Disagregasi rilis COICOP 12")
-    ws.cell(TOP + 1, 1, "12"); ws.cell(TOP + 1, 2, "Jasa asuransi dan keuangan"); ws.cell(TOP + 1, 3, PROP[11])
-    ws.cell(TOP + 2, 1, "13"); ws.cell(TOP + 2, 2, "Barang dan jasa lainnya"); ws.cell(TOP + 2, 3, PROP[12])
+    ws.cell(TOP + 1, 1, "12")
+    ws.cell(TOP + 1, 2, "Jasa asuransi dan keuangan")
+    ws.cell(TOP + 1, 3, PROP[11])
+    ws.cell(TOP + 2, 1, "13")
+    ws.cell(TOP + 2, 2, "Barang dan jasa lainnya")
+    ws.cell(TOP + 2, 3, PROP[12])
     ws.cell(TOP + 4, 1, "Coverage adjustment")
-    ws.cell(TOP + 5, 1, "06"); ws.cell(TOP + 5, 2, "Kesehatan"); ws.cell(TOP + 5, 3, COV[5])
-    ws.cell(TOP + 6, 1, "12"); ws.cell(TOP + 6, 2, "Jasa asuransi dan keuangan"); ws.cell(TOP + 6, 3, COV[11])
+    ws.cell(TOP + 5, 1, "06")
+    ws.cell(TOP + 5, 2, "Kesehatan")
+    ws.cell(TOP + 5, 3, COV[5])
+    ws.cell(TOP + 6, 1, "12")
+    ws.cell(TOP + 6, 2, "Jasa asuransi dan keuangan")
+    ws.cell(TOP + 6, 3, COV[11])
     cov6, cov12 = TOP + 5, TOP + 6
     ws = sheet_base(wb, "E2", "Scaling factor Theta", "")
-    ws.cell(TOP, 3, "Seruti 2025 (Rp Juta)"); ws.cell(TOP, 4, "SUT 2025 (Rp Juta)"); ws.cell(TOP, 5, "Theta")
+    ws.cell(TOP, 3, "Seruti 2025 (Rp Juta)")
+    ws.cell(TOP, 4, "SUT 2025 (Rp Juta)")
+    ws.cell(TOP, 5, "Theta")
     c25 = [3 + t for t, qq in enumerate(Q_ACT) if qq.startswith("2025")]
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         ws.cell(R(d), 3, f"=SUM(E1!{CL(c25[0])}{R(d)}:{CL(c25[-1])}{R(d)})" if c25 else "=NA()")
         ws.cell(R(d), 4, float(S["e2_sut"].iat[d, 0]))
         ws.cell(R(d), 5, f"=IF(C{R(d)}=0,NA(),D{R(d)}/C{R(d)})")
     ws = sheet_base(wb, "E3", "Estimasi ADHB inisial", "")
     vc = q_header(ws, [("Nilai agregat", NQ)])[0]
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         cov = f"Help!C{cov6}" if d == 5 else (f"Help!C{cov12}" if d == 11 else "1")
         for t in range(NQ):
             ws.cell(R(d), vc + t, f"=E2!E{R(d)}*E1!{CL(vc+t)}{R(d)}*{cov}")
@@ -965,7 +970,8 @@ def export_wb2(W1, W2, checks, rate):
     vc = q_header(ws, [("Indeks", NQ)])[0]
     i24 = Q_ACT.index("2024Q1") if "2024Q1" in Q_ACT else 0
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         for t in range(NQ):
             if t >= i24:
                 v = W1["q25"].iat[d, t] if t < W1["q25"].shape[1] else np.nan
@@ -980,7 +986,8 @@ def export_wb2(W1, W2, checks, rate):
     ws = sheet_base(wb, "E5", "Estimasi ADHK 2025 inisial", "")
     vc = q_header(ws, [("Nilai agregat", NQ)])[0]
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         for t in range(NQ):
             ws.cell(R(d), vc + t, f"=IF(E4!{CL(vc+t)}{R(d)}=0,NA(),E3!{CL(vc+t)}{R(d)}/E4!{CL(vc+t)}{R(d)}*100)")
     ws = sheet_base(wb, "I6", "Indikator data administratif", "")
@@ -995,19 +1002,22 @@ def export_wb2(W1, W2, checks, rate):
     ws = sheet_base(wb, "F7", "Fenomena kualitatif triwulan berjalan", "")
     ws.cell(TOP, 3, f"Fenomena pada {S['periode']}")
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         ws.cell(R(d), 3, str(S["f7_fenomena"].iat[d, 0]))
     ws = sheet_base(wb, "R8", "Balancing factor Beta", "")
     vc = q_header(ws, [("Beta", NQ)])[0]
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         for t in range(NQ):
             ws.cell(R(d), vc + t, float(S["r8_beta"].iat[d, t]))
     ws = sheet_base(wb, "R9", "Estimasi akhir ADHB", "")
     vc, qc0, yc0, cc0 = q_header(ws, [("Nilai agregat", NQ), ("Growth q-to-q (%)", NQ),
                                       ("Growth y-on-y (%)", NQ), ("Growth c-to-c (%)", NQ)])
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         for t in range(NQ):
             ws.cell(R(d), vc + t, f"=R8!{CL(vc+t)}{R(d)}*E3!{CL(vc+t)}{R(d)}")
         write_growth(ws, R(d), vc, qc0, yc0, cc0)
@@ -1015,50 +1025,54 @@ def export_wb2(W1, W2, checks, rate):
     vc, qc0, yc0, cc0 = q_header(ws, [("Nilai agregat", NQ), ("Growth q-to-q (%)", NQ),
                                       ("Growth y-on-y (%)", NQ), ("Growth c-to-c (%)", NQ)])
     for d in range(13):
-        ws.cell(R(d), 1, f"{d+1:02d}"); ws.cell(R(d), 2, DIV13[d])
+        ws.cell(R(d), 1, f"{d+1:02d}")
+        ws.cell(R(d), 2, DIV13[d])
         for t in range(NQ):
             ws.cell(R(d), vc + t, f"=IF(E4!{CL(vc+t)}{R(d)}=0,NA(),R9!{CL(vc+t)}{R(d)}/E4!{CL(vc+t)}{R(d)}*100)")
         write_growth(ws, R(d), vc, qc0, yc0, cc0)
     ws = sheet_base(wb, "A11", "Agregasi 7 subkomponen rilis", "")
     vn, vk = q_header(ws, [("Nilai berlaku", NQ), ("Nilai konstan", NQ)])
     for s7 in range(7):
-        ws.cell(R(s7), 1, f"{s7+1:02d}"); ws.cell(R(s7), 2, SUB7[s7])
+        ws.cell(R(s7), 1, f"{s7+1:02d}")
+        ws.cell(R(s7), 2, SUB7[s7])
         for t in range(NQ):
             tn = "+".join(f"R9!{CL(3+t)}{R(j)}" for j in MAP7[s7])
             tk = "+".join(f"R10!{CL(3+t)}{R(j)}" for j in MAP7[s7])
             ws.cell(R(s7), vn + t, f"={tn}")
             ws.cell(R(s7), vk + t, f"={tk}")
     ws = sheet_base(wb, "A12", "Konsumsi per kapita (Rp Ribu)", "")
-    ws.cell(TOP, 3, "Jumlah penduduk (jiwa)"); ws.cell(TOP, 4, int(S["penduduk"]))
+    ws.cell(TOP, 3, "Jumlah penduduk (jiwa)")
+    ws.cell(TOP, 4, int(S["penduduk"]))
     vn, vk = q_header(ws, [("Per kapita berlaku", NQ), ("Per kapita konstan", NQ)])
     for s7 in range(7):
-        ws.cell(R(s7), 1, f"{s7+1:02d}"); ws.cell(R(s7), 2, SUB7[s7])
+        ws.cell(R(s7), 1, f"{s7+1:02d}")
+        ws.cell(R(s7), 2, SUB7[s7])
         for t in range(NQ):
             ws.cell(R(s7), vn + t, f"=IF($D${TOP}=0,NA(),A11!{CL(vn+t)}{R(s7)}*1000/$D${TOP})")
             ws.cell(R(s7), vk + t, f"=IF($D${TOP}=0,NA(),A11!{CL(vk+t)}{R(s7)}*1000/$D${TOP})")
     ws = sheet_base(wb, "QC", "Pemeriksaan konsistensi internal & eksternal", "")
     r = TOP
     for c in checks:
-        ws.cell(r, 1, c["No"]); ws.cell(r, 2, c["Aspek"]); ws.cell(r, 3, c["Pertanyaan"])
-        ws.cell(r, 4, c["Jenis"]); ws.cell(r, 5, c["Respon"]); ws.cell(r, 6, c["Keterangan"])
+        ws.cell(r, 1, c["No"])
+        ws.cell(r, 2, c["Aspek"])
+        ws.cell(r, 3, c["Pertanyaan"])
+        ws.cell(r, 4, c["Jenis"])
+        ws.cell(r, 5, c["Respon"])
+        ws.cell(r, 6, c["Keterangan"])
         r += 1
     ws.cell(r + 1, 2, "Tingkat konsistensi")
     ws.cell(r + 1, 5, f'=COUNTIF(E{TOP}:E{r},"Ya")/22')
     ws.cell(r + 1, 5).number_format = "0.00%"
-    for _ws in wb.worksheets:
-        for _row in _ws.iter_rows():
-            for _c in _row:
-                if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
-                    _c.number_format = "#,##0.00"
-                elif isinstance(_c.value, str) and _c.value.startswith("="):
-                    _c.number_format = "#,##0.00"
-    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+    _rapikan_format(wb)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
 
 # ============================ ANTARMUKA ============================
 st.title("📊 Otomasi 2 Lembar Kerja BPS — PKRT & Deflator Kab. Cirebon (2025=100)")
-st.caption("WB1: 03. LK Deflator PPKK · WB2: 02. LK PKRT Put0_Rev · Periode fokus: **" + S["periode"] +
-           "** · Sumber: **" + S.get("sumber_data", "-") + "**")
-
+st.caption("WB1: 03. LK Deflator PPKK · WB2: 02. LK PKRT Put0_Rev · Periode fokus: " + S["periode"] +
+           " · Sumber: " + S.get("sumber_data", "-"))
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
     "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker",
@@ -1077,78 +1091,43 @@ with tab1:
         ("8", "QC & Export", "22 butir konsistensi + unduh 2 file .xlsx multi-sheet sesuai template BPS.")]:
         st.markdown(f"**Langkah {a} — {b}**: {c}")
     st.info("Semua pembagian dilindungi: pembagi nol menghasilkan NA (bukan crash / #DIV/0!).")
-
     with st.expander("📂 Cara Import Template PDRB ke E0", expanded=False):
         st.markdown("""
 **Langkah-langkah:**
-1. Buka sidebar → klik **"📂 Muat Template PDRB (.xlsx) → E0"**
+1. Buka sidebar → klik "📂 Muat Template PDRB (.xlsx) → E0"
 2. Pilih file `Template Upload PDRB - CIREBON - 2025Q4 - Kosong.xlsx`
-3. Sistem otomatis memetakan:
+3. Sistem otomatis memetakan baris id 2–14 ke 12 divisi E0 (id 13+14 dijumlahkan).
 
-| Baris Excel | → | Divisi E0 (OLD12) |
-|---|---|---|
-| 1.a (id=2) | → | Makanan dan minuman tidak beralkohol |
-| 1.b (id=3) | → | Minuman beralkohol dan tembakau |
-| 1.c (id=4) | → | Pakaian dan alas kaki |
-| 1.d (id=5) | → | Perumahan, air, listrik, gas... |
-| 1.e (id=6) | → | Furnitur, perlengkapan RT |
-| 1.f (id=7) | → | Kesehatan |
-| 1.g (id=8) | → | Transportasi |
-| 1.h (id=9) | → | Komunikasi |
-| 1.i (id=10) | → | Rekreasi dan kebudayaan |
-| 1.j (id=11) | → | Pendidikan |
-| 1.k (id=12) | → | Penyediaan makan minum & akomodasi |
-| 1.l + 1.m (id=13+14) | → | Barang dan jasa lainnya **(dijumlahkan)** |
-
-> ⚠️ **Catatan:** Sheet harus bernama **ADHB** dan **ADHK**,
-> kolom `id` berisi angka 2–14, dan kolom quarter berformat `2019Q1`–`2025Q4`.
-        """)
-
+⚠️ Catatan: sheet harus bernama **ADHB** dan **ADHK**, kolom `id` berisi angka 2–14,
+dan kolom quarter berformat `2019Q1`–`2025Q4`.
+""")
     with st.expander("📊 PANDUAN DATA RIIL Kab. Cirebon — Alur Perhitungan & Cakupan", expanded=False):
         st.markdown("#### 🔗 Alur perhitungan data riil (mudah dipahami)")
         st.markdown("""
-1. **Seruti → Total Konsumsi (ADHB awal)**
-   `Pengeluaran per-kapita (Seruti) × Jumlah Penduduk = Total Konsumsi (Rp Juta)`.
-   Inilah bahan baku utama PKRT, diambil langsung dari **Seruti BPS 2023Q1–2026Q2**.
-
-2. **Scaling factor θ (Theta)**
-   `θ = SUT 2025 ÷ Total Seruti 2025`. Pada data riil ini θ di-set **1 (netral)**,
-   sehingga ADHB awal = Seruti. Ubah nilai **E2 (SUT 2025)** bila ingin penyesuaian.
-
-3. **IHK → Deflator (2025=100)**
-   IHK triwulanan Kota Cirebon (13 COICOP) di-*re-referencing* menjadi basis 2025=100
-   di Workbook 1, lalu dipakai sebagai **deflator** di Workbook 2.
-
-4. **ADHB ÷ Deflator = ADHK**
-   `ADHK = ADHB ÷ (IHK/100)`. Menghilangkan efek kenaikan harga → volume riil.
-
-5. **Balancing factor β (Beta)**
-   `ADHB final = β × ADHB awal`. Default β = 1; sesuaikan di **R8** bila perlu penyeimbangan.
-
-6. **Agregasi & Per-kapita**
-   Hasil 13 COICOP diagregasi jadi **7 subkomponen rilis**, lalu dibagi penduduk → **konsumsi per kapita**.
-        """)
-        st.markdown("#### 📅 Cakupan data riil")
+1. **Seruti → Total Konsumsi (ADHB awal)**: Pengeluaran per kapita × Jumlah Penduduk = Total Konsumsi (Rp Juta).
+2. **Scaling factor θ (Theta)**: θ = SUT 2025 ÷ Total Seruti 2025 (default netral = 1).
+3. **IHK → Deflator (2025=100)**: IHK triwulanan Kota Cirebon di-re-referencing di Workbook 1.
+4. **ADHB ÷ Deflator = ADHK**: menghilangkan efek kenaikan harga → volume riil.
+5. **Balancing factor β (Beta)**: ADHB final = β × ADHB awal (default 1).
+6. **Agregasi & Per kapita**: 13 COICOP → 7 subkomponen rilis → dibagi penduduk.
+""")
         st.markdown("""
 | Komponen | Status | Periode |
 |---|---|---|
 | Seruti per-kapita (E1) | ✅ Riil | 2023Q1 – 2026Q2 |
 | IHK / Deflator (WB1) | ✅ Riil (IHK Kota Cirebon) | 2024Q1+ |
 | Jumlah Penduduk | ✅ Riil (Proyeksi SP2020) | 2023Q1 – 2026Q2 |
-| Rilis PDRB 2010=100 (E0) | ❌ Tidak tersedia | sebelum 2023 kosong |
+| Rilis PDRB 2010=100 (E0) | ❌ Tidak tersedia | gunakan Book1__.csv |
 | SUT 2025, I6, F7 | ⚠️ Default/netral | bisa diisi manual |
-        """)
-        st.warning("⚠️ **Keterbatasan:** Karena rilis PDRB 2010=100 (E0) tidak tersedia, "
-                   "backcasting sebelum 2023 tidak berjalan, dan **ADHK 2023** belum dapat dihitung "
-                   "(deflator 2024+ yang tersedia). ADHB 2023 tetap terhitung dari Seruti riil.")
-        st.success("💡 **Cara pakai:** klik tombol **📊 Data Riil** di sidebar, lalu telusuri "
-                   "Workbook 1 → Workbook 2 → Dashboard. Semua angka berasal dari data riil BPS.")
-
+""")
+        st.warning("⚠️ Keterbatasan: tanpa E0, backcasting sebelum 2023 tidak berjalan. "
+                   "Upload Book1__.csv untuk mengisi E0 (2010=100).")
+        st.success("💡 Cara pakai: klik tombol 📊 Data Riil di sidebar, lalu telusuri Workbook 1 → Workbook 2 → Dashboard.")
     with st.expander("🎲 Dokumentasi dataset simulasi Kab. Cirebon", expanded=False):
-        st.markdown("- **Musiman IHK**: Ramadan/Lebaran (Feb–Mar) menaikkan Makanan, Minuman, Rokok, Pakaian, Restoran; Jul (ajaran baru) menaikkan Pendidikan; Des–Jan (Nataru) menaikkan Transportasi, Restoran, Jasa lainnya.")
-        st.markdown("- **Pertumbuhan**: nominal PKRT 0,8–1,5%/triwulan (peak Q1); IPD 2010=100 tumbuh 2,4–3,2%/tahun.")
-        st.markdown("- **Konstanta BPS**: proporsi disagregasi COICOP-12 = 0,6335 / 0,3665; coverage adjustment div 06 = 0,4980, div 12 = 1,1007.")
-        st.markdown("- **Penduduk**: 2.304.567 jiwa (proyeksi 2026).")
+        st.markdown("- Musiman IHK: Ramadan/Lebaran (Feb–Mar), ajaran baru (Jul), Nataru (Des–Jan).")
+        st.markdown("- Pertumbuhan: nominal PKRT 0,8–1,5%/triwulan (peak Q1); IPD 2010=100 tumbuh 2,4–3,2%/tahun.")
+        st.markdown("- Konstanta BPS: proporsi disagregasi COICOP-12 = 0,6335 / 0,3665; coverage adj div 06 = 0,4980, div 12 = 1,1007.")
+        st.markdown("- Penduduk: 2.304.567 jiwa (proyeksi 2026).")
         st.markdown("**Pratinjau E2 — Nilai Konsumsi Dasar (SBH 2022)**")
         st.dataframe(S["e2_dasar"])
         st.markdown("**Pratinjau E1 — IHK bulanan (6 bulan terakhir)**")
@@ -1183,12 +1162,12 @@ with tab3:
     st.subheader("Workbook 2 — Lembar Kerja Utama PKRT")
     tA, tB, tC, tD = st.tabs(["E0 & E1 (input)", "E2, I6, F7, R8, A12", "Hasil E3-E5", "Hasil R9-R10, A11"])
     with tA:
-        st.markdown("Pratinjau E0 — format Indonesia")
-c1, c2 = st.columns(2)
-with c1:
-    st.dataframe(tabel_id(S["e0_adhb"]))
-with c2:
-    st.dataframe(tabel_id(S["e0_adhk"]))
+        st.markdown("**Pratinjau E0 — format Indonesia**")
+        pv1, pv2 = st.columns(2)
+        with pv1:
+            st.dataframe(tabel_id(S["e0_adhb"]))
+        with pv2:
+            st.dataframe(tabel_id(S["e0_adhk"]))
         st.markdown("**E0 — Rilis 2010=100: ADHB**")
         eb = st.data_editor(S["e0_adhb"], key="ed_e0b", num_rows="fixed")
         S["e0_adhb"] = eb
@@ -1216,19 +1195,26 @@ with c2:
     with tC:
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**E3 — ADHB inisial**"); st.dataframe(tabel_id(W2["e3"], 1))
-            st.markdown("**Theta**"); st.dataframe(tabel_id(W2["theta"], 4))
+            st.markdown("**E3 — ADHB inisial**")
+            st.dataframe(tabel_id(W2["e3"], 1))
+            st.markdown("**Theta**")
+            st.dataframe(tabel_id(W2["theta"], 4))
         with c2:
-            st.markdown("**E4 — Deflator 2025=100**"); st.dataframe(tabel_id(W2["cpi"]))
-            st.markdown("**E5 — ADHK inisial**"); st.dataframe(tabel_id(W2["e5"], 1))
+            st.markdown("**E4 — Deflator 2025=100**")
+            st.dataframe(tabel_id(W2["cpi"]))
+            st.markdown("**E5 — ADHK inisial**")
+            st.dataframe(tabel_id(W2["e5"], 1))
     with tD:
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**R9 — ADHB final**"); st.dataframe(tabel_id(W2["r9"], 1))
+            st.markdown("**R9 — ADHB final**")
+            st.dataframe(tabel_id(W2["r9"], 1))
         with c2:
-            st.markdown("**R10 — ADHK final**"); st.dataframe(tabel_id(W2["r10"], 1))
+            st.markdown("**R10 — ADHK final**")
+            st.dataframe(tabel_id(W2["r10"], 1))
         st.markdown("**A11 — 7 subkomponen (ADHB / ADHK)**")
-        st.dataframe(tabel_id(pd.concat([W2["a11n"].add_prefix("ADHB_"), W2["a11k"].add_prefix("ADHK_")], axis=1), 1))
+        st.dataframe(tabel_id(pd.concat([W2["a11n"].add_prefix("ADHB_"),
+                                         W2["a11k"].add_prefix("ADHK_")], axis=1), 1))
         st.markdown("**A12 — Konsumsi per kapita (Rp Ribu, ADHK)**")
         st.dataframe(tabel_id(W2["a12k"], 1))
 
@@ -1236,12 +1222,14 @@ with tab4:
     st.subheader("Dashboard & QC Checker")
     checks, rate = run_qc(W2, W1)
     t = NQ - 1
+
     def wdefl(divs):
         w = W2["r9"].iloc[divs, t].values
         v = W2["cpi"].iloc[divs, t].values
         if np.all(np.isfinite(w)) and w.sum() > 0 and np.all(np.isfinite(v)):
             return float(np.average(v, weights=w))
         return _nmean(list(v))
+
     qoq = (W2["a11k"].iloc[:, t] / W2["a11k"].iloc[:, t - 1] - 1) * 100 if t else W2["a11k"].iloc[:, t] * np.nan
     yoy = (W2["a11k"].iloc[:, t] / W2["a11k"].iloc[:, t - 4] - 1) * 100 if t >= 4 else W2["a11k"].iloc[:, t] * np.nan
     rek = pd.DataFrame({
@@ -1270,8 +1258,9 @@ with tab4:
         st.download_button("Unduh WB2 — LK Utama PKRT (.xlsx)", export_wb2(W1, W2, checks, rate),
                            file_name="02_LK_PKRT_Triwulanan_2025_100_Cirebon.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    with tab5:
 
-        cirebon_real_simulation.render_cirebon_simulation()
-    with tab6:
-        sut_jabar_bridge.render_sut_bridge()
+with tab5:
+    cirebon_real_simulation.render_cirebon_simulation()
+
+with tab6:
+    sut_jabar_bridge.render_sut_bridge()
