@@ -330,7 +330,7 @@ def render_sut_bridge():
         "COICOP": COICOP_KODE,
         "Rincian": list(ser.index),
         "Share Seruti (%)": (share_ser * 100).round(2).values,
-        "Share SUT (%)": (share * 100).round(2).values,
+        "Share SUT (%)": (pd.Series(share) * 100).round(2).values,
         "Selisih (pp)": ((share - share_ser) * 100).round(2).values,
         "Target SUT (Rp Juta)": np.round(target, 1),
         "Theta": theta.round(4).values,
