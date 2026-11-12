@@ -427,7 +427,7 @@ def muat_book1_csv(file_obj):
             q_map[cell] = j
 
     # --- Fungsi bantu: extract 12 baris PKRT dari suatu section ---
-    def extract_section(start_line, end_line):
+        def extract_section(start_line, end_line):
         """Ambil 12 subkomponen PKRT (baris yang diawali '1.a' s/d '1.l')."""
         data = {}
         for i in range(start_line, min(end_line, len(lines))):
@@ -435,7 +435,6 @@ def muat_book1_csv(file_obj):
             if not cells:
                 continue
             label = cells[0].strip()
-            # Cocokkan dengan pola "1.a." s/d "1.l."
             for k, prefix in enumerate(["1.a.", "1.b.", "1.c.", "1.d.", "1.e.", "1.f.",
                                          "1.g.", "1.h.", "1.i.", "1.j.", "1.k.", "1.l."]):
                 if label.startswith(prefix):
@@ -443,26 +442,15 @@ def muat_book1_csv(file_obj):
                     for qlabel, cidx in q_map.items():
                         if cidx < len(cells):
                             try:
-                                try:
-    txt = cells[cidx].strip()
-    if "," in txt:
-        val = float(txt.replace(".", "").replace(",", "."))
-    elif txt in ("", "-"):
-        val = 0.0
-    else:
-        val = float(txt.replace(".", ""))
-except (ValueError, IndexError):
-    val = 0.0
-                                val = 0.0try:
-    txt = cells[cidx].strip()
-    if "," in txt:
-        val = float(txt.replace(".", "").replace(",", "."))
-    elif txt in ("", "-"):
-        val = 0.0
-    else:
-        val = float(txt.replace(".", ""))
-except (ValueError, IndexError):
-    val = 0.0
+                                txt = cells[cidx].strip()
+                                if "," in txt:
+                                    val = float(txt.replace(".", "").replace(",", "."))
+                                elif txt in ("", "-"):
+                                    val = 0.0
+                                else:
+                                    val = float(txt.replace(".", ""))
+                            except (ValueError, IndexError):
+                                val = 0.0
                             row_vals[qlabel] = val
                     data[k] = row_vals
                     break
