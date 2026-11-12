@@ -895,13 +895,13 @@ def export_wb1(W1):
             else:
                 rng = f"E4!{CL(c25[0])}{R(d)}:{CL(c25[-1])}{R(d)}"
                 ws.cell(R(d), vc + t, f"=IF(AVERAGE({rng})=0,NA(),E4!{CL(vc+t)}{R(d)}/AVERAGE({rng})*100)")
-                for _ws in wb.worksheets:
-    for _row in _ws.iter_rows():
-        for _c in _row:
-            if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
-                _c.number_format = "#,##0.00"
-            elif isinstance(_c.value, str) and _c.value.startswith("="):
-                _c.number_format = "#,##0.00"
+    for _ws in wb.worksheets:
+        for _row in _ws.iter_rows():
+            for _c in _row:
+                if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
+                    _c.number_format = "#,##0.00"
+                elif isinstance(_c.value, str) and _c.value.startswith("="):
+                    _c.number_format = "#,##0.00"
     buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 def export_wb2(W1, W2, checks, rate):
