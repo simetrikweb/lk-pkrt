@@ -56,7 +56,11 @@ def sdiv(a, b):
         return np.nan
 
 def _nmean(lst):
-    def fmt_id(x, des=2):
+    v = [x for x in lst if x is not None and np.isfinite(x)]
+    return float(np.mean(v)) if v else np.nan
+
+
+def fmt_id(x, des=2):
     """Format angka gaya Indonesia: 5976606.65 -> 5.976.606,65"""
     try:
         if x is None:
@@ -76,8 +80,6 @@ def tabel_id(df, des=2):
         return df.map(lambda v: fmt_id(v, des))
     except Exception:
         return df.applymap(lambda v: fmt_id(v, des))
-    v = [x for x in lst if x is not None and np.isfinite(x)]
-    return float(np.mean(v)) if v else np.nan
 
 # ============================ DATA SIMULASI CIREBON ============================
 SIM_DASAR = [245000, 28500, 4200, 58000, 66500, 215000, 64000, 46500, 124000,
@@ -427,7 +429,7 @@ def muat_book1_csv(file_obj):
             q_map[cell] = j
 
     # --- Fungsi bantu: extract 12 baris PKRT dari suatu section ---
-        def extract_section(start_line, end_line):
+            def extract_section(start_line, end_line):
         """Ambil 12 subkomponen PKRT (baris yang diawali '1.a' s/d '1.l')."""
         data = {}
         for i in range(start_line, min(end_line, len(lines))):
