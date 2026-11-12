@@ -56,6 +56,26 @@ def sdiv(a, b):
         return np.nan
 
 def _nmean(lst):
+    def fmt_id(x, des=2):
+    """Format angka gaya Indonesia: 5976606.65 -> 5.976.606,65"""
+    try:
+        if x is None:
+            return "-"
+        x = float(x)
+        if not np.isfinite(x):
+            return "-"
+        s = f"{x:,.{des}f}"
+        return s.replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return str(x)
+
+
+def tabel_id(df, des=2):
+    """Salinan DataFrame untuk TAMPILAN dengan format Indonesia."""
+    try:
+        return df.map(lambda v: fmt_id(v, des))
+    except Exception:
+        return df.applymap(lambda v: fmt_id(v, des))
     v = [x for x in lst if x is not None and np.isfinite(x)]
     return float(np.mean(v)) if v else np.nan
 
@@ -423,9 +443,26 @@ def muat_book1_csv(file_obj):
                     for qlabel, cidx in q_map.items():
                         if cidx < len(cells):
                             try:
-                                val = float(cells[cidx].replace(",", "").replace(".", "").strip())
-                            except (ValueError, IndexError):
-                                val = 0.0
+                                try:
+    txt = cells[cidx].strip()
+    if "," in txt:
+        val = float(txt.replace(".", "").replace(",", "."))
+    elif txt in ("", "-"):
+        val = 0.0
+    else:
+        val = float(txt.replace(".", ""))
+except (ValueError, IndexError):
+    val = 0.0
+                                val = 0.0try:
+    txt = cells[cidx].strip()
+    if "," in txt:
+        val = float(txt.replace(".", "").replace(",", "."))
+    elif txt in ("", "-"):
+        val = 0.0
+    else:
+        val = float(txt.replace(".", ""))
+except (ValueError, IndexError):
+    val = 0.0
                             row_vals[qlabel] = val
                     data[k] = row_vals
                     break
@@ -875,6 +912,13 @@ def export_wb1(W1):
             else:
                 rng = f"E4!{CL(c25[0])}{R(d)}:{CL(c25[-1])}{R(d)}"
                 ws.cell(R(d), vc + t, f"=IF(AVERAGE({rng})=0,NA(),E4!{CL(vc+t)}{R(d)}/AVERAGE({rng})*100)")
+                for _ws in wb.worksheets:
+    for _row in _ws.iter_rows():
+        for _c in _row:
+            if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
+                _c.number_format = "#,##0.00"
+            elif isinstance(_c.value, str) and _c.value.startswith("="):
+                _c.number_format = "#,##0.00"
     buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 def export_wb2(W1, W2, checks, rate):
@@ -1018,6 +1062,13 @@ def export_wb2(W1, W2, checks, rate):
     ws.cell(r + 1, 2, "Tingkat konsistensi")
     ws.cell(r + 1, 5, f'=COUNTIF(E{TOP}:E{r},"Ya")/22')
     ws.cell(r + 1, 5).number_format = "0.00%"
+    for _ws in wb.worksheets:
+    for _row in _ws.iter_rows():
+        for _c in _row:
+            if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
+                _c.number_format = "#,##0.00"
+            elif isinstance(_c.value, str) and _c.value.startswith("="):
+                _c.number_format = "#,##0.00"
     buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 # ============================ ANTARMUKA ============================
@@ -1139,16 +1190,22 @@ with tab2:
     ca, cb = st.columns(2)
     with ca:
         st.markdown("**E4 — IHK triwulanan (2022=100)**")
-        st.dataframe(W1["q22"].round(2))
+        st.dataframe(tabel_id(W1["q22"]))
     with cb:
         st.markdown("**E5 — IHK triwulanan (2025=100) → ke E4 WB2**")
-        st.dataframe(W1["q25"].round(2))
+        st.dataframe(tabel_id(W1["q25"]))
     st.line_chart(W1["q25"].T)
 
 with tab3:
     st.subheader("Workbook 2 — Lembar Kerja Utama PKRT")
     tA, tB, tC, tD = st.tabs(["E0 & E1 (input)", "E2, I6, F7, R8, A12", "Hasil E3-E5", "Hasil R9-R10, A11"])
     with tA:
+        st.markdown("Pratinjau E0 — format Indonesia")
+c1, c2 = st.columns(2)
+with c1:
+    st.dataframe(tabel_id(S["e0_adhb"]))
+with c2:
+    st.dataframe(tabel_id(S["e0_adhk"]))
         st.markdown("**E0 — Rilis 2010=100: ADHB**")
         eb = st.data_editor(S["e0_adhb"], key="ed_e0b", num_rows="fixed")
         S["e0_adhb"] = eb
@@ -1176,21 +1233,21 @@ with tab3:
     with tC:
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**E3 — ADHB inisial**"); st.dataframe(W2["e3"].round(1))
-            st.markdown("**Theta**"); st.dataframe(W2["theta"].round(4))
+            st.markdown("**E3 — ADHB inisial**"); st.dataframe(tabel_id(W2["e3"], 1))
+            st.markdown("**Theta**"); st.dataframe(tabel_id(W2["theta"], 4))
         with c2:
-            st.markdown("**E4 — Deflator 2025=100**"); st.dataframe(W2["cpi"].round(2))
-            st.markdown("**E5 — ADHK inisial**"); st.dataframe(W2["e5"].round(1))
+            st.markdown("**E4 — Deflator 2025=100**"); st.dataframe(tabel_id(W2["cpi"]))
+            st.markdown("**E5 — ADHK inisial**"); st.dataframe(tabel_id(W2["e5"], 1))
     with tD:
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**R9 — ADHB final**"); st.dataframe(W2["r9"].round(1))
+            st.markdown("**R9 — ADHB final**"); st.dataframe(tabel_id(W2["r9"], 1))
         with c2:
-            st.markdown("**R10 — ADHK final**"); st.dataframe(W2["r10"].round(1))
+            st.markdown("**R10 — ADHK final**"); st.dataframe(tabel_id(W2["r10"], 1))
         st.markdown("**A11 — 7 subkomponen (ADHB / ADHK)**")
-        st.dataframe(pd.concat([W2["a11n"].add_prefix("ADHB_"), W2["a11k"].add_prefix("ADHK_")], axis=1).round(1))
+        st.dataframe(tabel_id(pd.concat([W2["a11n"].add_prefix("ADHB_"), W2["a11k"].add_prefix("ADHK_")], axis=1), 1))
         st.markdown("**A12 — Konsumsi per kapita (Rp Ribu, ADHK)**")
-        st.dataframe(W2["a12k"].round(1))
+        st.dataframe(tabel_id(W2["a12k"], 1))
 
 with tab4:
     st.subheader("Dashboard & QC Checker")
