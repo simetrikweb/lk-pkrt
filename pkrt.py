@@ -1149,9 +1149,11 @@ with tab2:
     st.markdown("**E1 — IHK bulanan subkomponen (2022=100)**")
     ed1 = st.data_editor(S["e1_ihk"], key="ed_e1", num_rows="fixed")
     S["e1_ihk"] = ed1
-    st.markdown("**E2 — Nilai konsumsi dasar (SBH 2022)**")
-    ed2 = st.data_editor(S["e2_dasar"], key="ed_e2", num_rows="fixed")
-    S["e2_dasar"] = ed2
+    st.markdown("**E2 — Nilai konsumsi dasar (SBH 2022), format Indonesia**")
+    st.dataframe(tabel_id(S["e2_dasar"], 2))
+    with st.expander("✏️ Edit nilai E2 (ketik angka biasa, contoh: 568956.375)"):
+        ed2 = st.data_editor(S["e2_dasar"], key="ed_e2", num_rows="fixed")
+        S["e2_dasar"] = ed2
     W1 = compute_wb1()
     W2 = compute_wb2(W1)
     ca, cb = st.columns(2)
@@ -1179,13 +1181,17 @@ with tab3:
         st.markdown("**E0 — Rilis 2010=100: ADHK**")
         ek = st.data_editor(S["e0_adhk"], key="ed_e0k", num_rows="fixed")
         S["e0_adhk"] = ek
-        st.markdown("**E1 — Seruti agregat tertimbang (2023Q1+)**")
-        es = st.data_editor(S["e1_seruti"], key="ed_ser", num_rows="fixed")
-        S["e1_seruti"] = es
+        st.markdown("**E1 — Seruti agregat tertimbang (2023Q1+), format Indonesia**")
+        st.dataframe(tabel_id(S["e1_seruti"], 1))
+        with st.expander("✏️ Edit nilai E1 Seruti"):
+            es = st.data_editor(S["e1_seruti"], key="ed_ser", num_rows="fixed")
+            S["e1_seruti"] = es
     with tB:
-        st.markdown("**E2 — PKRT SUT 2025 per divisi**")
-        esut = st.data_editor(S["e2_sut"], key="ed_sut", num_rows="fixed")
-        S["e2_sut"] = esut
+        st.markdown("**E2 — PKRT SUT 2025 per divisi, format Indonesia**")
+        st.dataframe(tabel_id(S["e2_sut"], 1))
+        with st.expander("✏️ Edit nilai E2 SUT"):
+            esut = st.data_editor(S["e2_sut"], key="ed_sut", num_rows="fixed")
+            S["e2_sut"] = esut
         st.markdown("**R8 — Balancing factor Beta**")
         ebt = st.data_editor(S["r8_beta"], key="ed_beta", num_rows="fixed")
         S["r8_beta"] = ebt
