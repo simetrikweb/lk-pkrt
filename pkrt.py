@@ -1046,12 +1046,12 @@ def export_wb2(W1, W2, checks, rate):
     ws.cell(r + 1, 5, f'=COUNTIF(E{TOP}:E{r},"Ya")/22')
     ws.cell(r + 1, 5).number_format = "0.00%"
     for _ws in wb.worksheets:
-    for _row in _ws.iter_rows():
-        for _c in _row:
-            if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
-                _c.number_format = "#,##0.00"
-            elif isinstance(_c.value, str) and _c.value.startswith("="):
-                _c.number_format = "#,##0.00"
+        for _row in _ws.iter_rows():
+            for _c in _row:
+                if isinstance(_c.value, (int, float)) and not isinstance(_c.value, bool):
+                    _c.number_format = "#,##0.00"
+                elif isinstance(_c.value, str) and _c.value.startswith("="):
+                    _c.number_format = "#,##0.00"
     buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 # ============================ ANTARMUKA ============================
