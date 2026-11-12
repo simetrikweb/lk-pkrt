@@ -527,7 +527,7 @@ if upl_book1 is not None:
 
 else:
     st.session_state.pop("book1_hash", None)
-        else:
+    else:
             st.sidebar.warning("⚠️ File terbaca tapi data PKRT kosong.")
     except Exception as _e:
         st.sidebar.error(f"Gagal membaca Book1__.csv: {_e}")
