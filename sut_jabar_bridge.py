@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 sut_jabar_bridge.py — Jembatan SUT Jabar 2020 -> 13 COICOP (metode STRUKTUR/SHARE)
-
 Sumber : SUT_3200_2020_0.csv, Tabel 2 (Penggunaan ADHB), kolom 3011
          "Konsumsi Rumah Tangga"
 Checksum: total PKRT Jabar 2020 = 1.478.218.353 (Juta Rupiah)
-
 Prinsip: total konsumsi TETAP dari Seruti Kab. Cirebon.
          SUT Jabar hanya mengoreksi KOMPOSISI antar-divisi COICOP.
+Versi bersih: tampilan angka memakai kaidah Indonesia (5.976.606,65).
 """
-
 import io
 import re
 import csv
@@ -18,6 +16,7 @@ import pandas as pd
 import streamlit as st
 
 EXPECTED_TOTAL = 1_478_218_353.0
+
 COICOP_KODE = [f"{i + 1:02d}" for i in range(13)]
 
 COMMODITY = {
@@ -84,11 +83,35 @@ SPLIT_DEFAULT = {
 }
 
 
+# ============================ FORMAT ANGKA INDONESIA ============================
+def fmt_id(x, des=2):
+    """Format angka gaya Indonesia: 5976606.65 -> 5.976.606,65"""
+    try:
+        if x is None:
+            return "-"
+        x = float(x)
+        if not np.isfinite(x):
+            return "-"
+        s = f"{x:,.{des}f}"
+        return s.replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return str(x)
+
+
+def fmt_cols(df, cols, des=2):
+    """Salinan DataFrame untuk TAMPILAN: kolom numerik terpilih diformat Indonesia."""
+    out = df.copy()
+    for c in cols:
+        if c in out.columns:
+            out[c] = out[c].map(lambda v: fmt_id(v, des))
+    return out
+
+
 # ============================ PARSER ============================
 def _num(x):
     """Konversi sel SUT: '  1,234 ', '-', '(567)' -> float."""
     s = str(x).strip().strip('"').strip()
-    if s in ("", "-", "- 0", "-0", "nan", "None", "#VALUE!", "#ERROR!"):
+    if s in ("", "-", "-0", "-0", "nan", "None", "#VALUE!", "#ERROR!"):
         return 0.0
     neg = s.startswith("(") and s.endswith(")")
     s = s.strip("()").replace(",", "").replace(" ", "")
@@ -112,7 +135,6 @@ def parse_sut(raw_bytes):
         raise ValueError("File tidak bisa dibaca sebagai teks CSV.")
 
     rows = list(csv.reader(io.StringIO(text)))
-
     hdr, col = None, None
     for i, r in enumerate(rows):
         cells = [c.strip() for c in r]
@@ -208,7 +230,7 @@ def render_sut_bridge():
         "SUT Jabar hanya mengoreksi komposisi antar-divisi."
     )
     st.warning(
-        "⚠️ Bobot split Kelompok C adalah **asumsi**, bukan angka resmi BPS. "
+        "⚠️ Bobot split Kelompok C adalah asumsi, bukan angka resmi BPS. "
         "Struktur tahun 2020 dibekukan untuk semua periode. "
         "Mohon direview petugas yang paham Neraca Nasional sebelum dipakai untuk rilis resmi."
     )
@@ -230,9 +252,9 @@ def render_sut_bridge():
     ref = float(total_ref) if total_ref else EXPECTED_TOTAL
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Total 65 komoditas", f"{total:,.0f}")
-    c2.metric("Baris total (1900)", f"{ref:,.0f}")
-    c3.metric("Selisih", f"{total - ref:,.0f}")
+    c1.metric("Total 65 komoditas", fmt_id(total, 0))
+    c2.metric("Baris total (1900)", fmt_id(ref, 0))
+    c3.metric("Selisih", fmt_id(total - ref, 0))
 
     ok = abs(total - ref) <= max(1.0, abs(ref) * 1e-6)
     if ok:
@@ -249,15 +271,13 @@ def render_sut_bridge():
         pct = sum(abs(v) for v in dropped.values()) / total * 100 if total else 0.0
         st.warning(
             f"Ada {len(dropped)} komoditas dikecualikan tetapi bernilai RT "
-            f"({pct:.2f}% dari total). Share dinormalisasi ulang atas sisanya."
+            f"({fmt_id(pct, 2)}% dari total). Share dinormalisasi ulang atas sisanya."
         )
-        st.dataframe(
-            pd.DataFrame([
-                {"Kode": f"P-{k:02d}", "Komoditas": COMMODITY[k], "Nilai RT (Jt Rp)": v}
-                for k, v in sorted(dropped.items())
-            ]),
-            hide_index=True,
-        )
+        dfx = pd.DataFrame([
+            {"Kode": f"P-{k:02d}", "Komoditas": COMMODITY[k], "Nilai RT (Jt Rp)": v}
+            for k, v in sorted(dropped.items())
+        ])
+        st.dataframe(fmt_cols(dfx, ["Nilai RT (Jt Rp)"], 2), hide_index=True)
 
     # ---------- bobot split ----------
     st.markdown("#### Bobot split Kelompok C")
@@ -283,7 +303,10 @@ def render_sut_bridge():
         hide_index=True,
     )
     st.session_state["sut_split_df"] = edited
-    st.caption("Hanya kolom **Bobot** yang bisa diubah. Otomatis dinormalisasi per komoditas (jumlah = 1).")
+    st.caption(
+        "Hanya kolom **Bobot** yang bisa diubah (desimal biasa agar mudah diedit). "
+        "Otomatis dinormalisasi per komoditas (jumlah = 1)."
+    )
 
     split_tbl, fixed = df_to_split_table(edited)
     if fixed:
@@ -332,10 +355,16 @@ def render_sut_bridge():
         "Share Seruti (%)": (share_ser * 100).round(2).values,
         "Share SUT (%)": (pd.Series(share) * 100).round(2).values,
         "Selisih (pp)": ((share - share_ser) * 100).round(2).values,
-        "Target SUT (Rp Juta)": np.round(target, 1),
+        "Target SUT (Rp Juta)": np.round(target, 2),
         "Theta": theta.round(4).values,
     })
-    st.dataframe(cmp, hide_index=True)
+    cmp_view = fmt_cols(
+        cmp,
+        ["Share Seruti (%)", "Share SUT (%)", "Selisih (pp)", "Target SUT (Rp Juta)"],
+        2,
+    )
+    cmp_view["Theta"] = cmp["Theta"].map(lambda v: fmt_id(v, 4))
+    st.dataframe(cmp_view, hide_index=True)
 
     big = cmp.loc[cmp["Selisih (pp)"].abs() > 10, "COICOP"].tolist()
     if big:
@@ -345,7 +374,7 @@ def render_sut_bridge():
         )
 
     st.caption(
-        f"Total Seruti 2025 (basis level) = **{tot_ser:,.1f}** Rp Juta. "
+        f"Total Seruti 2025 (basis level) = **{fmt_id(tot_ser, 1)}** Rp Juta. "
         "θ Kesehatan ≈ 2 karena menetralkan coverage adjustment 0,498 — itu normal."
     )
 
@@ -385,8 +414,9 @@ def _show_mapping(vals, split_tbl):
             rec.append({
                 "Kode": f"P-{k:02d}",
                 "Komoditas": COMMODITY[k],
-                "Nilai RT (Jt Rp)": round(vals.get(k, 0.0), 1),
+                "Nilai RT (Jt Rp)": round(vals.get(k, 0.0), 2),
                 "Jenis": ket,
                 "Tujuan": tgt,
             })
-        st.dataframe(pd.DataFrame(rec), hide_index=True, height=420)
+        dfm = pd.DataFrame(rec)
+        st.dataframe(fmt_cols(dfm, ["Nilai RT (Jt Rp)"], 2), hide_index=True, height=420)
