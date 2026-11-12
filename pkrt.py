@@ -399,15 +399,11 @@ def muat_book1_csv(file_obj):
     Membaca Book1__.csv (PDRB ADHB & ADHK per 12 subkomponen PKRT)
     dan mengisinya ke E0 (e0_adhb, e0_adhk).
     """
-    import io as _io
-
     raw = file_obj.read().decode("utf-8-sig")
     lines = raw.split("\n")
 
-    # --- Identifikasi baris header & data ---
     adhb_start = adhk_start = None
     header_row = None
-
     for i, line in enumerate(lines):
         low = line.lower()
         if "tabel 1" in low and "adhb" in low:
@@ -420,16 +416,14 @@ def muat_book1_csv(file_obj):
     if header_row is None or adhb_start is None or adhk_start is None:
         raise ValueError("Format CSV tidak dikenali. Pastikan ada Tabel 1 (ADHB) dan Tabel 2 (ADHK).")
 
-    # --- Parse header quarter ---
     hdr_cells = lines[header_row].split(";")
-    q_map = {}  # {quarter_label: col_index}
+    q_map = {}
     for j, cell in enumerate(hdr_cells):
         cell = cell.strip()
         if cell.startswith("Q") and "-" in cell:
             q_map[cell] = j
 
-    # --- Fungsi bantu: extract 12 baris PKRT dari suatu section ---
-            def extract_section(start_line, end_line):
+    def extract_section(start_line, end_line):
         """Ambil 12 subkomponen PKRT (baris yang diawali '1.a' s/d '1.l')."""
         data = {}
         for i in range(start_line, min(end_line, len(lines))):
@@ -456,6 +450,8 @@ def muat_book1_csv(file_obj):
                             row_vals[qlabel] = val
                     data[k] = row_vals
                     break
+            if len(data) == 12:
+                break
         return data
 
     adhb_data = extract_section(adhb_start, adhk_start)
@@ -464,22 +460,19 @@ def muat_book1_csv(file_obj):
     if len(adhb_data) < 12 or len(adhk_data) < 12:
         raise ValueError(f"Data tidak lengkap. ADHB: {len(adhb_data)} baris, ADHK: {len(adhk_data)} baris. Butuh 12.")
 
-    # --- Konversi ke DataFrame dengan kolom Q_FULL ---
     def to_dataframe(section_data):
         df = pd.DataFrame(0.0, index=OLD12, columns=Q_FULL)
         for div_idx, qvals in section_data.items():
             for qlabel, val in qvals.items():
-                # qlabel format: "Q1-2018" → "2018Q1"
                 parts = qlabel.split("-")
                 if len(parts) == 2:
-                    q_str = f"{parts[1]}{parts[0]}"  # "2018Q1"
+                    q_str = f"{parts[1]}{parts[0]}"
                     if q_str in Q_FULL:
                         df.iat[div_idx, Q_FULL.index(q_str)] = val
         return df
 
     adhb_df = to_dataframe(adhb_data)
     adhk_df = to_dataframe(adhk_data)
-
     return adhb_df, adhk_df
 def init_state():
     S = st.session_state
