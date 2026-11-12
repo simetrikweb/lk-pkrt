@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-pkrt.py v2.4 - OTOMASI 2 LEMBAR KERJA BPS (PKRT + DEFLATOR, 2025=100)
-Kab. Cirebon (32.09) | FITUR SIMPAN/MUAT JSON | UPLOAD Book1__.csv & Template PDRB
-Versi bersih: indentasi konsisten, parser angka Indonesia, tampilan format Indonesia.
+pkrt.py v2.5 - OTOMASI 2 LEMBAR KERJA BPS (PKRT + DEFLATOR, 2025=100)
+Kab. Cirebon (32.09) | SIMPAN/MUAT JSON | UPLOAD Book1__.csv & Template PDRB
+BARU v2.5: Export Excel PKRT 1.a-1.m (sheet ADHB & ADHK, rebasing 2025=100),
+           tab Panduan Praktis, copyright dinamis sidebar.
 """
 import io
 import json
 import hashlib
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -48,6 +50,23 @@ DF_KEYS = ["e1_ihk", "e2_dasar", "e0_adhb", "e0_adhk", "e1_seruti", "e2_sut",
            "r8_beta", "i6_admin", "f7_fenomena"]
 SC_KEYS = ["periode", "kode_prov", "kode_kab", "sister", "petugas", "supervisor",
            "penduduk", "sumber_data"]
+
+# Label baris keluaran Template PDRB (1.a s/d 1.m) — urutan = indeks DIV13
+TPL_LABELS = [
+    "1.a. Makanan dan Minuman tidak beralkohol",
+    "1.b. Minuman Beralkohol dan Tembakau",
+    "1.c. Pakaian dan Alas Kaki",
+    "1.d. Perumahan, Air, Listrik, Gas, dan Bahan Bakar Lainnya",
+    "1.e. Furnitur, Perlengkapan Rumah Tangga, dan Pemeliharaan Rutin Rumah Tangga",
+    "1.f. Kesehatan",
+    "1.g. Transportasi",
+    "1.h. Informasi dan Komunikasi",
+    "1.i. Rekreasi, Olahraga, dan Kebudayaan",
+    "1.j. Jasa Pendidikan",
+    "1.k. Restoran dan Jasa Akomodasi",
+    "1.l. Jasa Keuangan dan Asuransi",
+    "1.m. Perawatan diri, Perlindungan Sosial, serta Barang dan Jasa Lainnya",
+]
 
 
 def R(i):
@@ -414,7 +433,7 @@ def muat_book1_csv(file_obj):
                 continue
             label = cells[0].strip()
             for k, prefix in enumerate(["1.a.", "1.b.", "1.c.", "1.d.", "1.e.", "1.f.",
-                                        "1.g.", "1.h.", "1.i.", "1.j.", "1.k.", "1.l."]):
+                                         "1.g.", "1.h.", "1.i.", "1.j.", "1.k.", "1.l."]):
                 if label.startswith(prefix):
                     row_vals = {}
                     for qlabel, cidx in q_map.items():
@@ -562,6 +581,8 @@ _json = json.dumps(_kumpul_state(), ensure_ascii=False, indent=2).encode("utf-8"
 st.sidebar.download_button("⬇️ Unduh JSON (simpan semua input)", _json,
                            file_name="data_pkrt_cirebon.json", mime="application/json")
 st.sidebar.caption("JSON berisi seluruh input (E0, E1, E2, I6, F7, R8, identitas).")
+st.sidebar.markdown("---")
+st.sidebar.caption(f"©{datetime.now().year} Arief Rahman")
 
 PQ = S["periode"].replace("-", "")
 Q_ACT = [q for q in Q_FULL if q <= PQ]
@@ -1074,14 +1095,67 @@ def export_wb2(W1, W2, checks, rate):
     return buf.getvalue()
 
 
+# ============================ KELUARAN PKRT 1.a-1.m (REBASING 2025=100) ============================
+def bangun_pkrt_13(W2):
+    """Ambil estimasi final ADHB (R9) & ADHK (R10) per 13 divisi = baris 1.a-1.m template."""
+    adhb = W2["r9"].copy()
+    adhk = W2["r10"].copy()
+    adhb.index = TPL_LABELS
+    adhk.index = TPL_LABELS
+    return adhb, adhk
+
+
+def export_pkrt_rebasing(W2):
+    """Excel keluaran akhir: sheet ADHB & ADHK, baris total + 1.a-1.m, kolom Q_ACT."""
+    adhb, adhk = bangun_pkrt_13(W2)
+    wb = Workbook()
+    wb.remove(wb.active)
+    for sheet_name, df in [("ADHB", adhb), ("ADHK", adhk)]:
+        ws = wb.create_sheet(sheet_name)
+        ws["A1"] = f"Template Upload PDRB - CIREBON - {sheet_name} - Juta Rupiah"
+        ws["A1"].font = TIT
+        ws["A4"] = "Komponen"
+        ws["B4"] = "id"
+        ws["A4"].font = HDR
+        ws["B4"].font = HDR
+        for t, q in enumerate(Q_ACT):
+            ws.cell(4, 3 + t, q).font = HDR
+        r = 5
+        ws.cell(r, 1, "1. Pengeluaran Konsumsi Rumah Tangga (1.a. s/d 1.m.)")
+        ws.cell(r, 2, 1)
+        for t in range(NQ):
+            v = df.iloc[:, t].sum(min_count=1)
+            if np.isfinite(v):
+                ws.cell(r, 3 + t, float(v))
+        r += 1
+        for i, label in enumerate(TPL_LABELS):
+            ws.cell(r, 1, label)
+            ws.cell(r, 2, i + 2)
+            for t in range(NQ):
+                v = df.iat[i, t]
+                if np.isfinite(v):
+                    ws.cell(r, 3 + t, float(v))
+            r += 1
+        for row in ws.iter_rows(min_row=5, min_col=3, max_col=2 + NQ):
+            for c in row:
+                if isinstance(c.value, (int, float)):
+                    c.number_format = "#,##0.00"
+        ws.column_dimensions["A"].width = 60
+        ws.column_dimensions["B"].width = 6
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ============================ ANTARMUKA ============================
 st.title("📊 Otomasi 2 Lembar Kerja BPS — PKRT & Deflator Kab. Cirebon (2025=100)")
 st.caption("WB1: 03. LK Deflator PPKK · WB2: 02. LK PKRT Put0_Rev · Periode fokus: " + S["periode"] +
            " · Sumber: " + S.get("sumber_data", "-"))
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
     "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker",
-    "🏙️ Simulasi Riil Kab. Cirebon", "📗 SUT Jabar 2020"])
+    "🏙️ Simulasi Riil Kab. Cirebon", "📗 SUT Jabar 2020",
+    "🎓 Panduan Praktis & Unduh 1.a–1.m"])
 
 with tab1:
     st.header("Alur kerja 8 langkah")
@@ -1093,14 +1167,14 @@ with tab1:
         ("5", "WB2-E2/E3", "Theta = SUT 2025 / Seruti 2025; ADHB inisial = Theta × Seruti × coverage adj (Help)."),
         ("6", "WB2-E4/E5", "Deflator dari E5 WB1 (≥2024Q1); backcast via IPD 2010; ADHK inisial = deflasi."),
         ("7", "R8-R10, A11, A12", "Beta, estimasi akhir, agregasi 7 subkomponen, konsumsi per kapita."),
-        ("8", "QC & Export", "22 butir konsistensi + unduh 2 file .xlsx multi-sheet sesuai template BPS.")]:
+        ("8", "QC & Export", "22 butir konsistensi + unduh file .xlsx multi-sheet sesuai template BPS.")]:
         st.markdown(f"**Langkah {a} — {b}**: {c}")
     st.info("Semua pembagian dilindungi: pembagi nol menghasilkan NA (bukan crash / #DIV/0!).")
     with st.expander("📂 Cara Import Template PDRB ke E0", expanded=False):
         st.markdown("""
 Langkah-langkah:
 1. Buka sidebar → klik "📂 Muat Template PDRB (.xlsx) → E0"
-2. Pilih file `Template Upload PDRB - CIREBON - 2025Q4 - Kosong.xlsx`
+2. Pilih file template PDRB yang sudah terisi.
 3. Sistem otomatis memetakan baris id 2–14 ke 12 divisi E0 (id 13+14 dijumlahkan).
 
 ⚠️ Catatan: sheet harus bernama **ADHB** dan **ADHK**, kolom `id` berisi angka 2–14,
@@ -1125,9 +1199,9 @@ dan kolom quarter berformat `2019Q1` – `2025Q4`.
 | Rilis PDRB 2010=100 (E0) | ❌ Tidak tersedia | gunakan Book1__.csv |
 | SUT 2025, I6, F7 | ⚠️ Default/netral | bisa diisi manual |
 """)
-    st.warning("⚠️ Keterbatasan: tanpa E0, backcasting sebelum 2023 tidak berjalan. "
-               "Upload Book1__.csv untuk mengisi E0 (2010=100).")
-    st.success("💡 Cara pakai: klik tombol 📊 Data Riil di sidebar, lalu telusuri Workbook 1 → Workbook 2 → Dashboard.")
+        st.warning("⚠️ Keterbatasan: tanpa E0, backcasting sebelum 2023 tidak berjalan. "
+                   "Upload Book1__.csv untuk mengisi E0 (2010=100).")
+        st.success("💡 Cara pakai: klik tombol 📊 Data Riil di sidebar, lalu telusuri Workbook 1 → Workbook 2 → Dashboard.")
     with st.expander("🎲 Dokumentasi dataset simulasi Kab. Cirebon", expanded=False):
         st.markdown("- Musiman IHK: Ramadan/Lebaran (Feb–Mar), ajaran baru (Jul), Nataru (Des–Jan).")
         st.markdown("- Pertumbuhan: nominal PKRT 0,8–1,5%/triwulan (peak Q1); IPD 2010=100 tumbuh 2,4–3,2%/tahun.")
@@ -1149,11 +1223,9 @@ with tab2:
     st.markdown("**E1 — IHK bulanan subkomponen (2022=100)**")
     ed1 = st.data_editor(S["e1_ihk"], key="ed_e1", num_rows="fixed")
     S["e1_ihk"] = ed1
-    st.markdown("**E2 — Nilai konsumsi dasar (SBH 2022), format Indonesia**")
-    st.dataframe(tabel_id(S["e2_dasar"], 2))
-    with st.expander("✏️ Edit nilai E2 (ketik angka biasa, contoh: 568956.375)"):
-        ed2 = st.data_editor(S["e2_dasar"], key="ed_e2", num_rows="fixed")
-        S["e2_dasar"] = ed2
+    st.markdown("**E2 — Nilai konsumsi dasar (SBH 2022)**")
+    ed2 = st.data_editor(S["e2_dasar"], key="ed_e2", num_rows="fixed")
+    S["e2_dasar"] = ed2
     W1 = compute_wb1()
     W2 = compute_wb2(W1)
     ca, cb = st.columns(2)
@@ -1181,17 +1253,13 @@ with tab3:
         st.markdown("**E0 — Rilis 2010=100: ADHK**")
         ek = st.data_editor(S["e0_adhk"], key="ed_e0k", num_rows="fixed")
         S["e0_adhk"] = ek
-        st.markdown("**E1 — Seruti agregat tertimbang (2023Q1+), format Indonesia**")
-        st.dataframe(tabel_id(S["e1_seruti"], 1))
-        with st.expander("✏️ Edit nilai E1 Seruti"):
-            es = st.data_editor(S["e1_seruti"], key="ed_ser", num_rows="fixed")
-            S["e1_seruti"] = es
+        st.markdown("**E1 — Seruti agregat tertimbang (2023Q1+)**")
+        es = st.data_editor(S["e1_seruti"], key="ed_ser", num_rows="fixed")
+        S["e1_seruti"] = es
     with tB:
-        st.markdown("**E2 — PKRT SUT 2025 per divisi, format Indonesia**")
-        st.dataframe(tabel_id(S["e2_sut"], 1))
-        with st.expander("✏️ Edit nilai E2 SUT"):
-            esut = st.data_editor(S["e2_sut"], key="ed_sut", num_rows="fixed")
-            S["e2_sut"] = esut
+        st.markdown("**E2 — PKRT SUT 2025 per divisi**")
+        esut = st.data_editor(S["e2_sut"], key="ed_sut", num_rows="fixed")
+        S["e2_sut"] = esut
         st.markdown("**R8 — Balancing factor Beta**")
         ebt = st.data_editor(S["r8_beta"], key="ed_beta", num_rows="fixed")
         S["r8_beta"] = ebt
@@ -1278,3 +1346,55 @@ with tab5:
 
 with tab6:
     sut_jabar_bridge.render_sut_bridge()
+
+with tab7:
+    st.header("🎓 Panduan Praktis: Mendapatkan Angka PKRT 1.a–1.m (Rebasing 2025=100)")
+    st.markdown("""
+**Tujuan akhir:** satu file Excel berisi sheet **ADHB** dan **ADHK**, baris **1 (total)** dan **1.a s/d 1.m**,
+kolom triwulan **2019Q1 s/d periode terpilih**, satuan **juta rupiah**, tahun dasar **2025=100**.
+Baris 2 (LNPRT) dan seterusnya **tidak** dihasilkan aplikasi ini (dihitung aplikasi lain).
+""")
+    st.markdown("#### 🔢 Langkah-langkah (ikuti urut)")
+    st.markdown("""
+1. **Muat data riil.** Klik tombol **📊 Data Riil** di sidebar.
+   → IHK Kota Cirebon, Seruti per kapita 2023Q1–2026Q2, dan penduduk otomatis terisi.
+2. **Isi E0 (rilis 2010=100).** Upload **Book1__.csv** di sidebar.
+   → Ini bahan wajib agar backcasting 2019Q1–2022Q4 dan deflator sebelum 2024 dapat dihitung.
+   Tanpa E0, kolom triwulan awal akan kosong (NA).
+3. **Pilih periode.** Di sidebar, pilih periode estimasi (mis. **2025-Q4** atau **2026-Q2**).
+   → Kolom keluaran otomatis mengikuti: 2019Q1 s/d periode terpilih.
+4. **Periksa Workbook 1.** Buka tab **🌡️ Workbook 1**: pastikan tabel E4/E5 tampil wajar
+   (IHK 2025=100 sekitar 100 pada tahun 2025).
+5. **Periksa Workbook 2.** Buka tab **🧮 Workbook 2** → sub-tab *Hasil R9-R10*:
+   inilah estimasi final ADHB (R9) dan ADHK 2025=100 (R10) per 13 divisi = baris 1.a–1.m.
+   Bila perlu penyeimbangan, ubah **Beta** di sub-tab *E2, I6, F7, R8, A12*.
+6. **Cek QC.** Buka tab **📈 Dashboard**: pastikan tingkat konsistensi ≥ 85% dan tidak ada
+   peringatan merah yang belum dijelaskan.
+7. **Unduh hasil.** Scroll ke bawah halaman ini → lihat **pratinjau format Indonesia** →
+   klik tombol **⬇️ Unduh Excel PKRT 1.a–1.m**. File berisi sheet ADHB & ADHK persis
+   struktur template (baris id 1–14), siap dipakai/dikirim ke aplikasi lanjutan.
+""")
+    st.markdown("#### 🧯 Pemecahan masalah umum")
+    st.markdown("""
+| Gejala | Penyebab | Solusi |
+|---|---|---|
+| Kolom 2019–2023 kosong (NA) | E0 belum diisi | Upload Book1__.csv (sidebar) |
+| Angka ADHK aneh / melonjak | Deflator belum wajar | Periksa WB1 E5 & periode sidebar |
+| Total baris 1 ≠ jumlah 1.a–1.m | Tidak mungkin (otomatis sum) | Muat ulang halaman |
+| Ingin melanjutkan pekerjaan lain waktu | - | Unduh JSON (sidebar), lalu muat kembali |
+""")
+    st.subheader("Pratinjau keluaran (format Indonesia)")
+    _adhb13, _adhk13 = bangun_pkrt_13(W2)
+    p1, p2 = st.columns(2)
+    with p1:
+        st.markdown("**ADHB — harga berlaku (juta Rp)**")
+        st.dataframe(tabel_id(_adhb13))
+    with p2:
+        st.markdown("**ADHK — harga konstan 2025=100 (juta Rp)**")
+        st.dataframe(tabel_id(_adhk13))
+    st.download_button("⬇️ Unduh Excel PKRT 1.a–1.m (sheet ADHB & ADHK)",
+                       export_pkrt_rebasing(W2),
+                       file_name=f"PKRT_Rebasing_2025_100_Cirebon_{S['periode']}.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.caption("Struktur file sama dengan template manual Anda: baris 1 = total PKRT, "
+               "baris id 2–14 = 1.a–1.m; kolom triwulan mulai 2019Q1 sampai periode terpilih.")
