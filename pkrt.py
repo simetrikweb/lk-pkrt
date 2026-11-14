@@ -15,7 +15,7 @@ import streamlit as st
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter as CL
-import cirebon_real_simulation
+import konoha_real_simulation
 import sut_jabar_bridge
 
 st.set_page_config(page_title="LK PKRT & Deflator Kab. Konoha", page_icon="📊", layout="wide")
@@ -271,10 +271,10 @@ def _q_of_month(m):
 def muat_data_riil():
     """Isi lembar kerja dengan DATA RIIL."""
     try:
-        import cirebon_real_simulation as crs
-        POP, IHK, SERUTI = crs.POPULATION_CIREBON, crs.DEFLATOR_IHK_2025, crs.SERUTI_PERKAPITA
+        import konoha_real_simulation as crs
+        POP, IHK, SERUTI = crs.POPULATION_KONOHA, crs.DEFLATOR_IHK_2025, crs.SERUTI_PERKAPITA
     except Exception as e:
-        st.error(f"Gagal memuat data riil. Pastikan cirebon_real_simulation.py ada & berisi dataset. Detail: {e}")
+        st.error(f"Gagal memuat data riil. Pastikan konoha_real_simulation.py ada & berisi dataset. Detail: {e}")
         return
     S = st.session_state
     rows = {}
@@ -1341,7 +1341,7 @@ with tab4:
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab5:
-    cirebon_real_simulation.render_cirebon_simulation()
+    konoha_real_simulation.render_konoha_simulation()
 
 with tab6:
     sut_jabar_bridge.render_sut_bridge()
