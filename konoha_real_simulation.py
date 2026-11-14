@@ -349,7 +349,7 @@ def render_konoha_simulation():
         st.download_button(
             label="📥 Unduh Detail COICOP (CSV)",
             data=csv,
-            file_name='pkrt_cirebon_detail.csv',
+            file_name='pkrt_konoha_detail.csv',
             mime='text/csv',
         )
         st.caption("File CSV sengaja tetap memakai titik desimal agar mudah diolah ulang "

@@ -16,7 +16,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter as CL
 import konoha_real_simulation
-import sut_jabar_bridge
+import sut_wakanda_bridge
 
 st.set_page_config(page_title="LK PKRT & Deflator Kab. Konoha", page_icon="📊", layout="wide")
 
@@ -579,7 +579,7 @@ def _kumpul_state():
 
 _json = json.dumps(_kumpul_state(), ensure_ascii=False, indent=2).encode("utf-8")
 st.sidebar.download_button("⬇️ Unduh JSON (simpan semua input)", _json,
-                           file_name="data_pkrt_cirebon.json", mime="application/json")
+                           file_name="data_pkrt_konoha.json", mime="application/json")
 st.sidebar.caption("JSON berisi seluruh input (E0, E1, E2, I6, F7, R8, identitas).")
 st.sidebar.markdown("---")
 st.sidebar.caption(f"©{datetime.now().year} Arief Rahman")
@@ -1153,7 +1153,7 @@ st.title("📊 Otomasi 2 Lembar Kerja — PKRT & Deflator Kab. Konoha (2025=100)
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
     "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker",
-    "🏙️ Simulasi Riil Kab. Konoha", "📗 SUT Jabar 2020",
+    "🏙️ Simulasi Riil Kab. Konoha", "📗 SUT Wakanda 2020",
     "🎓 Panduan Praktis & Unduh 1.a–1.m"])
 
 with tab1:
@@ -1333,18 +1333,18 @@ with tab4:
     d1, d2 = st.columns(2)
     with d1:
         st.download_button("Unduh WB1 — LK Deflator (.xlsx)", export_wb1(W1),
-                           file_name="03_LK_Deflator_PKRT_2025_100_Cirebon.xlsx",
+                           file_name="03_LK_Deflator_PKRT_2025_100_Konoha.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     with d2:
         st.download_button("Unduh WB2 — LK Utama PKRT (.xlsx)", export_wb2(W1, W2, checks, rate),
-                           file_name="02_LK_PKRT_Triwulanan_2025_100_Cirebon.xlsx",
+                           file_name="02_LK_PKRT_Triwulanan_2025_100_Konoha.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab5:
     konoha_real_simulation.render_konoha_simulation()
 
 with tab6:
-    sut_jabar_bridge.render_sut_bridge()
+    sut_wakanda_bridge.render_sut_bridge()
 
 with tab7:
     st.header("🎓 Panduan Praktis: Mendapatkan Angka PKRT 1.a–1.m (Rebasing 2025=100)")
@@ -1393,7 +1393,7 @@ Baris 2 (LNPRT) dan seterusnya **tidak** dihasilkan aplikasi ini (dihitung aplik
         st.dataframe(tabel_id(_adhk13))
     st.download_button("⬇️ Unduh Excel PKRT 1.a–1.m (sheet ADHB & ADHK)",
                        export_pkrt_rebasing(W2),
-                       file_name=f"PKRT_Rebasing_2025_100_Cirebon_{S['periode']}.xlsx",
+                       file_name=f"PKRT_Rebasing_2025_100_Konoha_{S['periode']}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     st.caption("Struktur file sama dengan template manual Anda: baris 1 = total PKRT, "
                "baris id 2–14 = 1.a–1.m; kolom triwulan mulai 2019Q1 sampai periode terpilih.")
