@@ -1148,7 +1148,7 @@ def export_pkrt_rebasing(W2):
 
 
 # ============================ ANTARMUKA ============================
-st.title("📊 Otomasi 2 Lembar Kerja — PKRT & Deflator (2025=100)")
+st.title("📊 Otomasi Lembar Kerja PKRT Rebasing (2025=100)")
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
