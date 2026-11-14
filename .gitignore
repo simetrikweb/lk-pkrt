@@ -1,0 +1,83 @@
+# ===================== PYTHON =====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+
+# ===================== VIRTUAL ENVIRONMENT =====================
+venv/
+.venv/
+env/
+ENV/
+env32/
+env64/
+
+# ===================== CACHE & TOOLS =====================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ===================== STREAMLIT =====================
+# Secrets JANGAN masuk repo (isi lewat Streamlit Cloud / mesin lokal)
+.streamlit/secrets.toml
+
+# ===================== IDE / EDITOR =====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+# Catatan: .devcontainer/ SENGAJA TIDAK di-ignore karena dipakai
+# GitHub Codespaces / VS Code Dev Containers.
+# Jika Anda tidak memakai Codespaces, hapus komentar baris berikut:
+# .devcontainer/
+
+# ===================== FILE SISTEM OPERASI =====================
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ===================== LOG & TEMPORARY =====================
+*.log
+logs/
+tmp/
+temp/
+cache/
+
+# ===================== FILE TEMPORARY MICROSOFT OFFICE =====================
+~$*.xlsx
+~$*.xls
+~$*.docx
+~$*.pptx
+*.tmp
+
+# ===================== DATA LOKAL (OPSIONAL) =====================
+# Aktifkan (hapus tanda #) bila file data input/output TIDAK ingin
+# ikut ter-upload ke GitHub (misalnya data internal instansi):
+# data/
+*.csv
+*.xlsx
+*.xls
+# Pengecualian bila hanya file tertentu yang ingin disimpan:
+# !Book1__.csv
