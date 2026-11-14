@@ -34,7 +34,7 @@ htmlcov/
 .nox/
 
 # ===================== STREAMLIT =====================
-# Secrets JANGAN masuk repo (isi lewat Streamlit Cloud / mesin lokal)
+# Secrets JANGAN masuk repo (bila kelak memakai secrets)
 .streamlit/secrets.toml
 
 # ===================== IDE / EDITOR =====================
@@ -43,9 +43,8 @@ htmlcov/
 *.swp
 *.swo
 *~
-# Catatan: .devcontainer/ SENGAJA TIDAK di-ignore karena dipakai
-# GitHub Codespaces / VS Code Dev Containers.
-# Jika Anda tidak memakai Codespaces, hapus komentar baris berikut:
+# Catatan: .devcontainer/ SENGAJA TIDAK di-ignore (dipakai GitHub Codespaces).
+# Jika Anda tidak memakai Codespaces, hapus tanda # di baris berikut:
 # .devcontainer/
 
 # ===================== FILE SISTEM OPERASI =====================
@@ -72,12 +71,14 @@ cache/
 ~$*.pptx
 *.tmp
 
-# ===================== DATA LOKAL (OPSIONAL) =====================
-# Aktifkan (hapus tanda #) bila file data input/output TIDAK ingin
-# ikut ter-upload ke GitHub (misalnya data internal instansi):
-# data/
+# ===================== DATA LOKAL (SENSITIF) =====================
+# File data input/output TIDAK ikut ter-upload ke GitHub.
 *.csv
 *.xlsx
 *.xls
-# Pengecualian bila hanya file tertentu yang ingin disimpan:
-# !Book1__.csv
+# File simpanan pekerjaan aplikasi (bila kelak ditambahkan)
+data_*.json
+
+# Pengecualian: bila ada file tertentu yang AMAN dan ingin disimpan di repo,
+# hapus tanda # dan sesuaikan namanya, contoh:
+# !CONTOH_format_template_kosong.xlsx
