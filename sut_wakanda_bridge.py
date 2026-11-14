@@ -224,15 +224,15 @@ def aggregate(vals, split_tbl):
 
 # ============================ UI ============================
 def render_sut_bridge():
-    st.subheader("📗 SUT Jawa Barat 2020 → Struktur 13 COICOP")
+    st.subheader("📗 SUT Wakanda 2020 → Struktur 13 COICOP")
     st.caption(
         "Metode SHARE: total konsumsi tetap dari Seruti Kab. Konoha; "
         "SUT Wakanda hanya mengoreksi komposisi antar-divisi."
     )
     st.warning(
-        "⚠️ Bobot split Kelompok C adalah asumsi, bukan angka resmi BPS. "
+        "⚠️ Bobot split Kelompok C adalah asumsi, bukan angka resmi. "
         "Struktur tahun 2020 dibekukan untuk semua periode. "
-        "Mohon direview petugas yang paham Neraca Nasional sebelum dipakai untuk rilis resmi."
+        "Mohon direview sebelum dipakai untuk rilis resmi."
     )
 
     up = st.file_uploader(
