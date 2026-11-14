@@ -365,14 +365,19 @@ class DeflatorJabarWorkspace:
             c13 = CODES13[i13]
             anchor = self.q25.loc[c13, "2023Q1"]
             cur = anchor
-            for t in range(len(cols) - 1, -1, -1):
-                qt, qn = cols[t], Q_ALL[Q_ALL.index(qt) + 1]
-                ratio = sdiv(ipd12.iloc[r][qt] if hasattr(ipd12.iloc[r], "__getitem__") else np.nan,
-                             ipd12.iloc[r][qn])
-                if not np.isfinite(ratio):
-                    break
-                cur = cur * ratio
-                out.loc[c13, qt] = cur
+        for t in range(len(cols) - 1, -1, -1):
+            qt = cols[t]
+            idx_qt = Q_ALL.index(qt)
+            if idx_qt + 1 >= len(Q_ALL):
+                break
+            qn = Q_ALL[idx_qt + 1]
+            if qt not in ipd12.columns or qn not in ipd12.columns:
+                break
+            ratio = sdiv(ipd12.iloc[r][qt], ipd12.iloc[r][qn])
+            if not np.isfinite(ratio):
+                break
+            cur = cur * ratio
+            out.loc[c13, qt] = cur
         return out
 
 
