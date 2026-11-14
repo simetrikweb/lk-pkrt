@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-pkrt.py v2.5 - OTOMASI 2 LEMBAR KERJA BPS (PKRT + DEFLATOR, 2025=100)
-Kab. Cirebon (32.09) | SIMPAN/MUAT JSON | UPLOAD Book1__.csv & Template PDRB
+pkrt.py v2.5 - OTOMASI 2 LEMBAR KERJA (PKRT + DEFLATOR, 2025=100)
+Kab. Konoha (XX.XX) | SIMPAN/MUAT JSON | UPLOAD Book1__.csv & Template PDRB
 BARU v2.5: Export Excel PKRT 1.a-1.m (sheet ADHB & ADHK, rebasing 2025=100),
            tab Panduan Praktis, copyright dinamis sidebar.
 """
@@ -18,7 +18,7 @@ from openpyxl.utils import get_column_letter as CL
 import cirebon_real_simulation
 import sut_jabar_bridge
 
-st.set_page_config(page_title="LK PKRT & Deflator Kab. Cirebon", page_icon="📊", layout="wide")
+st.set_page_config(page_title="LK PKRT & Deflator Kab. Konoha", page_icon="📊", layout="wide")
 
 # ============================ KONSTANTA ============================
 Q_FULL = [f"{y}Q{q}" for y in range(2019, 2027) for q in (1, 2, 3, 4)]
@@ -109,12 +109,12 @@ def tabel_id(df, des=2):
         return df.applymap(lambda v: fmt_id(v, des))
 
 
-# ============================ DATA SIMULASI CIREBON ============================
+# ============================ DATA SIMULASI KONOHA ============================
 SIM_DASAR = [245000, 28500, 4200, 58000, 66500, 215000, 64000, 46500, 124000,
              18500, 57500, 41000, 28500, 86000, 7600, 11400, 38000]
 SIM_F7 = {DIV13[0]: "Harga pangan stabil pasca panen raya beras; efek Ramadan berakhir Mei.",
           DIV13[1]: "Kenaikan cukai hasil tembakau Jan 2026 menggeser permintaan ke golongan bawah.",
-          DIV13[2]: "Diskon pakaian pasca-Lebaran di pusat perbelanjaan Cirebon.",
+          DIV13[2]: "Diskon pakaian pasca-Lebaran di pusat perbelanjaan Konoha.",
           DIV13[3]: "Tarif listrik non-subsidi tetap; konsumsi RT naik musiman.",
           DIV13[4]: "Harga furnitur impor naik tipis; permintaan perlengkapan RT stabil.",
           DIV13[5]: "Klaim BPJS Kesehatan dialihkan ke PKP sesuai rule rebasing 2025.",
@@ -122,7 +122,7 @@ SIM_F7 = {DIV13[0]: "Harga pangan stabil pasca panen raya beras; efek Ramadan be
           DIV13[7]: "Paket data murah & promosi operator menahan kenaikan pengeluaran.",
           DIV13[8]: "Libur sekolah Juni & wisata pantai Kejawanan/Ciwaringin menaikkan rekreasi.",
           DIV13[9]: "Tahun ajaran baru 2026/27; sebagian uang pangkal jatuh di Q2.",
-          DIV13[10]: "Kuliner Cirebon (empal gentong, tahu gejrot) ramai pasca mudik.",
+          DIV13[10]: "Kuliner Konoha (empal gentong, tahu gejrot) ramai pasca mudik.",
           DIV13[11]: "FISIM metode triwulanan baru (faktor 1.1007) diterapkan.",
           DIV13[12]: "Harga emas perhiasan naik; konsumsi barang pribadi lainnya meningkat."}
 
@@ -232,8 +232,8 @@ def muat_simulasi():
     S["penduduk"] = 2304567
     S["periode"] = "2026-Q2"
     S["kode_prov"], S["kode_kab"], S["sister"] = "32", "09", "74"
-    S["petugas"], S["supervisor"] = "Statistikian BPS Kab. Cirebon", "Kasubag IP"
-    S["sumber_data"] = "Simulasi Kab. Cirebon"
+    S["petugas"], S["supervisor"] = "Supervisor", "Kasubag IP"
+    S["sumber_data"] = "Simulasi Kab. Konoha"
 
 
 def kosongkan():
@@ -254,7 +254,7 @@ def kosongkan():
     S["sumber_data"] = "Template kosong (input manual)"
 
 
-# ============================ DATA RIIL CIREBON ============================
+# ============================ DATA RIIL KONOHA ============================
 SUB17_TO_COICOP = {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6,
                    9: 7, 10: 7, 11: 8, 12: 9, 13: 10, 14: 11, 15: 11, 16: 12}
 
@@ -269,7 +269,7 @@ def _q_of_month(m):
 
 
 def muat_data_riil():
-    """Isi lembar kerja dengan DATA RIIL BPS Kab. Cirebon."""
+    """Isi lembar kerja dengan DATA RIIL."""
     try:
         import cirebon_real_simulation as crs
         POP, IHK, SERUTI = crs.POPULATION_CIREBON, crs.DEFLATOR_IHK_2025, crs.SERUTI_PERKAPITA
@@ -332,13 +332,13 @@ def muat_data_riil():
                                         "Kendaraan bermotor terdaftar (ribu)", "Transaksi QRIS (juta transaksi)"],
                                  columns=Q_FULL)
     S["f7_fenomena"] = pd.DataFrame(
-        ["Data riil Seruti & IHK Kota Cirebon; lengkapi fenomena sesuai rilis BRS BPS." for _ in DIV13],
+        ["Data riil Seruti & IHK Kota Konoha; lengkapi fenomena sesuai rilis." for _ in DIV13],
         index=DIV13, columns=["Fenomena triwulan berjalan"])
     S["periode"] = "2026-Q2"
     S["penduduk"] = int(POP.get("2026Q2", 2431927))
     S["kode_prov"], S["kode_kab"], S["sister"] = "32", "09", "74"
-    S["petugas"], S["supervisor"] = "Statistikian BPS Kab. Cirebon", "Kasubag IP"
-    S["sumber_data"] = "DATA RIIL BPS Kab. Cirebon (Seruti 2023Q1-2026Q2 & IHK Kota Cirebon 2025=100)"
+    S["petugas"], S["supervisor"] = "Supervisor", "Kasubag IP"
+    S["sumber_data"] = "DATA RIIL (Seruti 2023Q1-2026Q2 & IHK Kota Konoha 2025=100)"
 
 
 # ============================ IMPORT PDRB EXCEL -> E0 ============================
@@ -529,7 +529,7 @@ if _upl_pdrb is not None:
         if _adhb.abs().sum().sum() > 0:
             S["e0_adhb"] = _adhb
             S["e0_adhk"] = _adhk
-            S["sumber_data"] = "Template PDRB Kab. Cirebon (Excel upload)"
+            S["sumber_data"] = "Template PDRB Kab. Konoha (Excel upload)"
             for _k in list(st.session_state.keys()):
                 if _k.startswith("ed"):
                     del st.session_state[_k]
@@ -563,7 +563,7 @@ if S["periode"] not in PER_OPT:
     S["periode"] = PER_OPT[-1]
 st.sidebar.selectbox("Periode estimasi (YYYY-QQ)", PER_OPT,
                      index=PER_OPT.index(S["periode"]), key="periode")
-st.sidebar.caption("Kab. Cirebon (32.09) · Sister city Kota Cirebon (74) · Tahun dasar 2025=100")
+st.sidebar.caption("Kab. Konoha (XX.XX) · Sister city Kota Konoha (XX) · Tahun dasar 2025=100")
 st.sidebar.caption("Sumber aktif: " + S.get("sumber_data", "-"))
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 💾 Simpan / Muat Pekerjaan")
@@ -842,7 +842,7 @@ def _rapikan_format(wb):
 def export_wb1(W1):
     wb = Workbook()
     wb.remove(wb.active)
-    ws = sheet_base(wb, "Home", "Deflator PKRT Triwulanan", "PDRB (2025=100) - Kab. Cirebon")
+    ws = sheet_base(wb, "Home", "Deflator PKRT Triwulanan", "PDRB (2025=100) - Kab. Konoha")
     r = TOP
     for a, b in [("E1", "IHK bulanan subkomponen (2022=100)"), ("E2", "Bobot COICOP (SBH 2022)"),
                  ("E3", "IHK bulanan 13 COICOP"), ("E4", "IHK triwulanan 2022=100"),
@@ -921,7 +921,7 @@ def export_wb1(W1):
 def export_wb2(W1, W2, checks, rate):
     wb = Workbook()
     wb.remove(wb.active)
-    ws = sheet_base(wb, "Home", "PKRT Triwulanan", "PDRB (2025=100) - Kab. Cirebon")
+    ws = sheet_base(wb, "Home", "PKRT Triwulanan", "PDRB (2025=100) - Kab. Konoha")
     r = TOP
     for a, b in [("E0", "PKRT rilis 2010=100 (input)"), ("E1", "Seruti + backcasting"),
                  ("Help", "Konstanta metodologi"), ("E2", "Scaling factor Theta"),
@@ -957,7 +957,7 @@ def export_wb2(W1, W2, checks, rate):
                         f"=IF(E0!{CL(vb + t + 1)}{R(rr)}=0,NA(),"
                         f"{CL(vc + t + 1)}{R(d)}*E0!{CL(vb + t)}{R(rr)}/E0!{CL(vb + t + 1)}{R(rr)})")
     ws.cell(TOP + 6, 3, "Catatan: 2019Q1-2022Q4 di-backcasting menggunakan PKRT rilis harga berlaku 2010=100")
-    ws = sheet_base(wb, "Help", "Konstanta metodologi BPS", "")
+    ws = sheet_base(wb, "Help", "Konstanta metodologi", "")
     ws.cell(TOP, 1, "Disagregasi rilis COICOP 12")
     ws.cell(TOP + 1, 1, "12")
     ws.cell(TOP + 1, 2, "Jasa asuransi dan keuangan")
@@ -1112,7 +1112,7 @@ def export_pkrt_rebasing(W2):
     wb.remove(wb.active)
     for sheet_name, df in [("ADHB", adhb), ("ADHK", adhk)]:
         ws = wb.create_sheet(sheet_name)
-        ws["A1"] = f"Template Upload PDRB - CIREBON - {sheet_name} - Juta Rupiah"
+        ws["A1"] = f"Template Upload PDRB - KONOHA - {sheet_name} - Juta Rupiah"
         ws["A1"].font = TIT
         ws["A4"] = "Komponen"
         ws["B4"] = "id"
@@ -1148,13 +1148,12 @@ def export_pkrt_rebasing(W2):
 
 
 # ============================ ANTARMUKA ============================
-st.title("📊 Otomasi 2 Lembar Kerja BPS — PKRT & Deflator Kab. Cirebon (2025=100)")
-st.caption("WB1: 03. LK Deflator PPKK · WB2: 02. LK PKRT Put0_Rev · Periode fokus: " + S["periode"] +
-           " · Sumber: " + S.get("sumber_data", "-"))
+st.title("📊 Otomasi 2 Lembar Kerja — PKRT & Deflator Kab. Konoha (2025=100)")
+
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📘 Panduan Alur Kerja Pemula", "🌡️ Workbook 1: LK Deflator IHK",
     "🧮 Workbook 2: LK Utama PKRT", "📈 Dashboard & QC Checker",
-    "🏙️ Simulasi Riil Kab. Cirebon", "📗 SUT Jabar 2020",
+    "🏙️ Simulasi Riil Kab. Konoha", "📗 SUT Jabar 2020",
     "🎓 Panduan Praktis & Unduh 1.a–1.m"])
 
 with tab1:
@@ -1167,7 +1166,7 @@ with tab1:
         ("5", "WB2-E2/E3", "Theta = SUT 2025 / Seruti 2025; ADHB inisial = Theta × Seruti × coverage adj (Help)."),
         ("6", "WB2-E4/E5", "Deflator dari E5 WB1 (≥2024Q1); backcast via IPD 2010; ADHK inisial = deflasi."),
         ("7", "R8-R10, A11, A12", "Beta, estimasi akhir, agregasi 7 subkomponen, konsumsi per kapita."),
-        ("8", "QC & Export", "22 butir konsistensi + unduh file .xlsx multi-sheet sesuai template BPS.")]:
+        ("8", "QC & Export", "22 butir konsistensi + unduh file .xlsx multi-sheet sesuai template.")]:
         st.markdown(f"**Langkah {a} — {b}**: {c}")
     st.info("Semua pembagian dilindungi: pembagi nol menghasilkan NA (bukan crash / #DIV/0!).")
     with st.expander("📂 Cara Import Template PDRB ke E0", expanded=False):
@@ -1180,12 +1179,12 @@ Langkah-langkah:
 ⚠️ Catatan: sheet harus bernama **ADHB** dan **ADHK**, kolom `id` berisi angka 2–14,
 dan kolom quarter berformat `2019Q1` – `2025Q4`.
 """)
-    with st.expander("📊 PANDUAN DATA RIIL Kab. Cirebon — Alur Perhitungan & Cakupan", expanded=False):
+    with st.expander("📊 PANDUAN DATA RIIL — Alur Perhitungan & Cakupan", expanded=False):
         st.markdown("#### 🔗 Alur perhitungan data riil (mudah dipahami)")
         st.markdown("""
 1. **Seruti → Total Konsumsi (ADHB awal)**: Pengeluaran per kapita × Jumlah Penduduk = Total Konsumsi (Rp Juta).
 2. **Scaling factor θ (Theta)**: θ = SUT 2025 ÷ Total Seruti 2025 (default netral = 1).
-3. **IHK → Deflator (2025=100)**: IHK triwulanan Kota Cirebon di-re-referencing di Workbook 1.
+3. **IHK → Deflator (2025=100)**: IHK triwulanan Kota Konoha di-re-referencing di Workbook 1.
 4. **ADHB ÷ Deflator = ADHK**: menghilangkan efek kenaikan harga → volume riil.
 5. **Balancing factor β (Beta)**: ADHB final = β × ADHB awal (default 1).
 6. **Agregasi & Per kapita**: 13 COICOP → 7 subkomponen rilis → dibagi penduduk.
@@ -1194,7 +1193,7 @@ dan kolom quarter berformat `2019Q1` – `2025Q4`.
 | Komponen | Status | Periode |
 |---|---|---|
 | Seruti per-kapita (E1) | ✅ Riil | 2023Q1 – 2026Q2 |
-| IHK / Deflator (WB1) | ✅ Riil (IHK Kota Cirebon) | 2024Q1+ |
+| IHK / Deflator (WB1) | ✅ Riil (IHK Kota Konoha) | 2024Q1+ |
 | Jumlah Penduduk | ✅ Riil (Proyeksi SP2020) | 2023Q1 – 2026Q2 |
 | Rilis PDRB 2010=100 (E0) | ❌ Tidak tersedia | gunakan Book1__.csv |
 | SUT 2025, I6, F7 | ⚠️ Default/netral | bisa diisi manual |
@@ -1202,10 +1201,10 @@ dan kolom quarter berformat `2019Q1` – `2025Q4`.
         st.warning("⚠️ Keterbatasan: tanpa E0, backcasting sebelum 2023 tidak berjalan. "
                    "Upload Book1__.csv untuk mengisi E0 (2010=100).")
         st.success("💡 Cara pakai: klik tombol 📊 Data Riil di sidebar, lalu telusuri Workbook 1 → Workbook 2 → Dashboard.")
-    with st.expander("🎲 Dokumentasi dataset simulasi Kab. Cirebon", expanded=False):
+    with st.expander("🎲 Dokumentasi dataset simulasi Kab. Konoha", expanded=False):
         st.markdown("- Musiman IHK: Ramadan/Lebaran (Feb–Mar), ajaran baru (Jul), Nataru (Des–Jan).")
         st.markdown("- Pertumbuhan: nominal PKRT 0,8–1,5%/triwulan (peak Q1); IPD 2010=100 tumbuh 2,4–3,2%/tahun.")
-        st.markdown("- Konstanta BPS: proporsi disagregasi COICOP-12 = 0,6335 / 0,3665; coverage adj div 06 = 0,4980, div 12 = 1,1007.")
+        st.markdown("- Konstanta: proporsi disagregasi COICOP-12 = 0,6335 / 0,3665; coverage adj div 06 = 0,4980, div 12 = 1,1007.")
         st.markdown("- Penduduk: 2.304.567 jiwa (proyeksi 2026).")
         st.markdown("**Pratinjau E2 — Nilai Konsumsi Dasar (SBH 2022), format Indonesia**")
         st.dataframe(tabel_id(S["e2_dasar"]))
@@ -1330,7 +1329,7 @@ with tab4:
         st.line_chart(W2["a11k"].T)
     st.metric("Tingkat Konsistensi QC", f"{rate:.2f}%")
     st.dataframe(pd.DataFrame(checks), hide_index=True)
-    st.markdown("### ⬇️ Export Excel multi-sheet (struktur & rumus template BPS)")
+    st.markdown("### ⬇️ Export Excel multi-sheet (struktur & rumus template)")
     d1, d2 = st.columns(2)
     with d1:
         st.download_button("Unduh WB1 — LK Deflator (.xlsx)", export_wb1(W1),
@@ -1357,7 +1356,7 @@ Baris 2 (LNPRT) dan seterusnya **tidak** dihasilkan aplikasi ini (dihitung aplik
     st.markdown("#### 🔢 Langkah-langkah (ikuti urut)")
     st.markdown("""
 1. **Muat data riil.** Klik tombol **📊 Data Riil** di sidebar.
-   → IHK Kota Cirebon, Seruti per kapita 2023Q1–2026Q2, dan penduduk otomatis terisi.
+   → IHK Kota Konoha, Seruti per kapita 2023Q1–2026Q2, dan penduduk otomatis terisi.
 2. **Isi E0 (rilis 2010=100).** Upload **Book1__.csv** di sidebar.
    → Ini bahan wajib agar backcasting 2019Q1–2022Q4 dan deflator sebelum 2024 dapat dihitung.
    Tanpa E0, kolom triwulan awal akan kosong (NA).
