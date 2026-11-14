@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-app_pkrt_cirebon.py — STANDALONE
-Otomasi end-to-end Rebasing PDRB Pengeluaran 2025=100 — Kab. Cirebon (3209)
+pkrt.py — STANDALONE
+Otomasi end-to-end Rebasing PDRB Pengeluaran 2025=100 — Kab. Konoha (9999)
 3 LK resmi + Auto-Fill Template Excel Asli (openpyxl, sel rumus aman)
 Triwulan: 2019Q1–2030Q4 | Tampilan angka: kaidah Indonesia
 """
@@ -15,7 +15,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter as CL
 
-st.set_page_config(page_title="LK PKRT & Deflator Kab. Cirebon (Standalone)", page_icon="📊", layout="wide")
+st.set_page_config(page_title="LK PKRT & Deflator", page_icon="📊", layout="wide")
 
 # ==================================================================================
 # 0. UTILITAS & KONSTANTA UMUM
@@ -255,9 +255,9 @@ SUT_SPLIT_DEFAULT = {25: {3: 0.25, 6: 0.75}, 26: {0: 0.99, 1: 0.01}, 28: {2: 0.9
                      36: {4: 0.50, 7: 0.40, 5: 0.10}, 40: {12: 0.60, 8: 0.25, 4: 0.15},
                      52: {6: 0.70, 7: 0.30}, 55: {7: 0.85, 8: 0.15}, 65: {12: 0.60, 8: 0.40}}
 
-GUARDRAIL_SUT = ("⚠️ GUARDRAIL: SUT Jabar 2020 (level provinsi 3200, 65 produk, kode PKRT 3011, "
+GUARDRAIL_SUT = ("⚠️ GUARDRAIL: SUT Wakanda 2020 (level provinsi 3200, 65 produk, kode PKRT 3011, "
                  "Tabel 3–6 kosong) HANYA sebagai pembanding struktur/rasio untuk QC Aspek 18, 19, 21 — "
-                 "BUKAN pembilang theta Kab. Cirebon. SUT Regional 2025 memakai dimensi 83/84 industri × "
+                 "BUKAN pembilang theta Kab. Konoha. SUT Regional 2025 memakai dimensi 83/84 industri × "
                  "105 produk (KBLI 2025), valuasi harga dasar, kode total PKRT U-3010 (U-3011–U-3017).")
 
 TPL_LABELS = ["1.a. Makanan dan Minuman tidak beralkohol", "1.b. Minuman Beralkohol dan Tembakau",
@@ -415,12 +415,12 @@ def seruti_aggregate(popq, day_adjust=False):
 # 4. MODUL 3 — MESIN LK PKRT (E0..E5, R8..R10, A11, A12)
 # ==================================================================================
 class PKRTWorkspace:
-    def __init__(self, e0, seruti, defl_ws, beta, sut25, mode_b, popq, q_act):
+    def __init__(self, e0, seruti, defl_ws, beta, sut25, mode_bench, popq, q_act):
         self.q = q_act
         self.e0b, self.e0k = e0
         self.defl = defl_ws
         self.beta = beta
-        self.mode_b = mode_b
+        self.mode_bench = mode_bench
         self.popq = popq
         # ipd 2010=100 (12 divisi)
         self.ipd = pd.DataFrame(np.nan, index=CODES12, columns=self.q)
@@ -454,7 +454,7 @@ class PKRTWorkspace:
                     ser.iloc[d, t] = ser.iloc[d, t + 1] * sdiv(self.e0b.loc[CODES12[r], self.q[t]],
                                                                self.e0b.loc[CODES12[r], self.q[t + 1]])
         self.ser = ser
-        cov = COV if mode_b else {k: 1.0 for k in COV}
+        cov = COV if mode_bench else {k: 1.0 for k in COV}
         ser_adj = ser.copy()
         for d, f in cov.items():
             ser_adj.iloc[d] = ser_adj.iloc[d] * f
@@ -497,7 +497,7 @@ class PKRTWorkspace:
 
 
 # ==================================================================================
-# 5. MODUL 4 — BENCHMARK SUT JABAR 2020
+# 5. MODUL 4 — BENCHMARK SUT WAKANDA 2020
 # ==================================================================================
 class SUTJabar2020Benchmark:
     def __init__(self):
@@ -624,8 +624,8 @@ def run_qc22(W, defl_ws, sut: SUTJabar2020Benchmark, share_seruti):
            "Maks |y-y| <12%", "Deflasi konsisten", "Implisit=IHK per COICOP; total searah IHK Umum",
            "Identik", "Benchmark tahunan", "Batas ±15%", "A12 konsisten", "Proxy I6", "Proxy I6",
            "Proxy I6", "Proxy I6", "F7 lengkap", "Kebijakan tercakup",
-           "Deviasi struktur vs SUT Jabar <15 pp", "Rasio serapan PKRT 15–40%", "Putaran 0",
-           "Share vs Seruti/SUT Jabar", "2019-2030"]
+           "Deviasi struktur vs SUT Wakanda <15 pp", "Rasio serapan PKRT 15–40%", "Putaran 0",
+           "Share vs Seruti/SUT Wakanda", "2019-2030"]
     checks = []
     for i, (asp, tanya, jenis) in enumerate(QC_ITEMS):
         checks.append({"No": i + 1, "Aspek": asp, "Pertanyaan": tanya, "Jenis": jenis,
@@ -688,9 +688,9 @@ def export_lk_pkrt(W, checks, rate, meta):
     wb = Workbook()
     wb.remove(wb.active)
     q = W.q
-    ws = _sheet(wb, "Home", "02. LK PKRT Triwulanan (2025=100)", "Kab. Cirebon (3209)")
-    info = [("Kode Provinsi", "32"), ("Deskripsi Provinsi", "Jawa Barat"), ("Kode Kabupaten/Kota", "09"),
-            ("Deskripsi Kabupaten Kota", "Kabupaten Cirebon"), ("Periode (tahun-triwulan)", meta["periode"]),
+    ws = _sheet(wb, "Home", "02. LK PKRT Triwulanan (2025=100)", "Kab. Konoha (9999)")
+    info = [("Kode Provinsi", "32"), ("Deskripsi Provinsi", "Wakanda"), ("Kode Kabupaten/Kota", "99"),
+            ("Deskripsi Kabupaten Kota", "Kabupaten Konoha"), ("Periode (tahun-triwulan)", meta["periode"]),
             ("Putaran Angka Estimasi", "0"), ("Tanggal Pengerjaan", meta["tanggal"]),
             ("Petugas", meta["petugas"]), ("Supervisor", meta["supervisor"]), ("Catatan", meta["catatan"])]
     r = 4
@@ -823,7 +823,7 @@ def export_lk_pkrt(W, checks, rate, meta):
         _write_grid(ws, df, q, r0=r, codes=[f"{i + 1:02d}" for i in range(7)], labels=SUB7)
         r += 9
     # A12 (5 blok)
-    ws = _sheet(wb, "A12", "Konsumsi per kapita (Rp Ribu)", "Penduduk Kab. Cirebon (3209)")
+    ws = _sheet(wb, "A12", "Konsumsi per kapita (Rp Ribu)", "Penduduk Kab. Konoha (9999)")
     _qhead(ws, q)
     ws.cell(13, 2, "Jumlah penduduk (jiwa)")
     for t in range(len(q)):
@@ -861,7 +861,7 @@ def export_lk_pkrt(W, checks, rate, meta):
 def export_lk_deflator(defl_ws):
     wb = Workbook()
     wb.remove(wb.active)
-    ws = _sheet(wb, "Home", "03. LK Deflator PKRT (2025=100) PPKK", "Kab. Cirebon; sister city 74")
+    ws = _sheet(wb, "Home", "03. LK Deflator PKRT (2025=100) PPKK", "Kab. Konoha; sister city 94")
     ws.cell(4, 2, "Kode Provinsi")
     ws.cell(4, 4, "32")
     ws.cell(5, 2, "Kode Kab/Kota")
@@ -902,10 +902,10 @@ def export_lk_deflator(defl_ws):
 def export_lk_deflator_jabar(defl_ws):
     wb = Workbook()
     wb.remove(wb.active)
-    ws = _sheet(wb, "Home", "LK Deflator Harga Konsumen Prov. Jabar", "Referensi provinsi 32 (sister city 74)")
+    ws = _sheet(wb, "Home", "LK Deflator Harga Konsumen Prov. Wakanda", "Referensi provinsi 92 (sister city 94)")
     ws.cell(4, 2, "Provinsi")
-    ws.cell(4, 4, "32 Jawa Barat")
-    ws = _sheet(wb, "Deflator", "Deflator triwulanan 2025=100", "Kab. Cirebon via sister city")
+    ws.cell(4, 4, "92 Wakanda")
+    ws = _sheet(wb, "Deflator", "Deflator triwulanan 2025=100", "Kab. Konoha via sister city")
     _qhead(ws, list(defl_ws.q25.columns))
     _write_grid(ws, defl_ws.q25, list(defl_ws.q25.columns), codes=CODES13 + ["00"],
                 labels=[COICOP_LABELS.get(c, "IHK Umum") for c in CODES13 + ["00"]])
@@ -918,7 +918,7 @@ def export_lk_deflator_jabar(defl_ws):
 def export_sut_benchmark(sut: SUTJabar2020Benchmark):
     wb = Workbook()
     wb.remove(wb.active)
-    ws = _sheet(wb, "Makro", "SUT Jabar 2020 (Makro)", "Rp Juta")
+    ws = _sheet(wb, "Makro", "SUT Wakanda 2020 (Makro)", "Rp Juta")
     r = 4
     for k, v in SUT_JABAR_2020_MACRO.items():
         ws.cell(r, 2, k)
@@ -940,7 +940,7 @@ def export_sut_benchmark(sut: SUTJabar2020Benchmark):
         ws.cell(r, 2, k)
         ws.cell(r, 3, round(v, 2))
         r += 1
-    ws = _sheet(wb, "Struktur", "Struktur share PKRT Jabar 2020 (%)", "Konkordansi 65 produk -> 13 COICOP")
+    ws = _sheet(wb, "Struktur", "Struktur share PKRT Wakanda 2020 (%)", "Konkordansi 65 produk -> 13 COICOP")
     st_ = sut.structure()
     for i, c in enumerate(CODES13):
         ws.cell(4 + i, 1, c)
@@ -1183,16 +1183,16 @@ if "init" not in S:
     S["pop_method"] = "akhir"
     S["day_adj"] = False
     S["mode_bench"] = "B"
-    S["petugas"] = "Statistikian BPS Kab. Cirebon"
+    S["petugas"] = "Petugas"
     S["supervisor"] = "Kasubag IP"
-    S["catatan"] = "Otomasi aplikasi standalone app_pkrt_cirebon.py"
+    S["catatan"] = "Otomasi aplikasi standalone pkrt.py"
     S["e0"] = None
     S["beta"] = None
     S["sut25"] = None
     S["f7"] = None
     S["i6"] = None
 
-st.title("📊 Aplikasi Penyusunan LK PKRT Triwulanan (2025=100) — Kab. Cirebon (3209)")
+st.title("📊 Aplikasi Penyusunan LK PKRT Triwulanan (2025=100)")
 st.caption("Standalone · 3 LK resmi · Auto-Fill Template Excel · ©" + str(datetime.now().year) + " Arief Rahman")
 
 PER_OPT = [f"{q[:4]}-Q{q[-1]}" for q in Q_ALL if q >= "2024Q1"]
@@ -1249,12 +1249,12 @@ if S["i6"] is None or list(S["i6"].index) != i6_idx:
 e0 = S["e0"]
 W = PKRTWorkspace(e0[0].reindex(columns=Q_ACT) if e0 else None,
                   e0[1].reindex(columns=Q_ACT) if e0 else None,
-                  seruti, defl, S["beta"], S["sut25"], S["mode_b"] == "B", popq, Q_ACT) if False else None
+                  seruti, defl, S["beta"], S["sut25"], S["mode_bench"] == "B", popq, Q_ACT) if False else None
 
 # bangun workspace dengan e0 opsional
 _e0b = S["e0"][0] if S["e0"] else None
 _e0k = S["e0"][1] if S["e0"] else None
-W = PKRTWorkspace(_e0b, _e0k, seruti, defl, S["beta"], S["sut25"], S["mode_b"] == "B", popq, Q_ACT)
+W = PKRTWorkspace(_e0b, _e0k, seruti, defl, S["beta"], S["sut25"], S["mode_bench"] == "B", popq, Q_ACT)
 
 sut = SUTJabar2020Benchmark()
 share_ser = (seruti[[c for c in seruti.columns if c.startswith("2025")]].sum(axis=1)
@@ -1272,23 +1272,23 @@ meta = {"periode": S["periode"], "tanggal": datetime.now().strftime("%d-%m-%Y"),
         "status": status, "sut25": S["sut25"], "f7": S["f7"], "i6": S["i6"], "pop": popq}
 
 t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs(
-    ["1. Home & Wilayah", "2. LK Deflator Jabar & PPKK", "3. Benchmark SUT Jabar 2020",
+    ["1. Home & Wilayah", "2. LK Deflator Wakanda & PPKK", "3. Benchmark SUT Wakanda 2020",
      "4. Help & Parameter SNA 2008", "5. LK PKRT Inisial & Backcasting", "6. Indikator & Fenomena",
      "7. Simulasi Beta & Rekonsiliasi", "8. 7 Subkomponen & Per Kapita", "9. QC & Export/Auto-Fill"])
 
 with t1:
     st.header("Home & Wilayah (3209)")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Kode Provinsi", "32 (Jawa Barat)")
-    c2.metric("Kode Kab/Kota", "09 (Kab. Cirebon)")
-    c3.metric("Sister city", "74 (Kota Cirebon)")
+    c1.metric("Kode Provinsi", "92 (Wakanda)")
+    c2.metric("Kode Kab/Kota", "99 (Kab. Konoha)")
+    c3.metric("Sister city", "94 (Kota Konoha)")
     st.markdown("**Metadata Home:**")
     st.dataframe(pd.DataFrame([meta]).T, hide_index=False)
     st.markdown("**Status Flow Lembar Kerja:**")
     st.dataframe(pd.DataFrame([{"Sheet": k, "Status": v} for k, v in status.items()]), hide_index=True)
 
 with t2:
-    st.header("LK Deflator Jabar & PPKK (E1–E5)")
+    st.header("LK Deflator Wakanda & PPKK (E1–E5)")
     st.markdown("**E1 — IHK bulanan 2022=100 (2024M1+), format Indonesia**")
     st.dataframe(tabel_id(defl.sub_m), height=300)
     st.markdown("**E4 — IHK triwulanan 2022=100**")
@@ -1300,11 +1300,11 @@ with t2:
     st.dataframe(tabel_id(qq))
 
 with t3:
-    st.header("Benchmark SUT Jabar 2020 (Modul 4)")
+    st.header("Benchmark SUT Wakanda 2020 (Modul 4)")
     st.warning(GUARDRAIL_SUT)
     st.markdown("**Rasio makro supply-side:**")
     st.dataframe(tabel_id(pd.DataFrame([sut.ratios()])), hide_index=True)
-    st.markdown("**Struktur share PKRT Jabar 2020 (%):**")
+    st.markdown("**Struktur share PKRT Wakanda 2020 (%):**")
     st.dataframe(tabel_id(sut.structure().to_frame("Share")), height=300)
     if st.button("Terapkan struktur SUT ke SUT 2025 (E2)"):
         tot25 = float(share_ser.sum())
@@ -1384,7 +1384,7 @@ with t9:
                            file_name="03_LK_Deflator_PKRT_PPKK.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     with d3:
-        st.download_button("LK Deflator Jabar", export_lk_deflator_jabar(defl),
+        st.download_button("LK Deflator Wakanda", export_lk_deflator_jabar(defl),
                            file_name="LK_Deflator_IHK_Jabar.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     with d4:
