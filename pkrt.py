@@ -18,7 +18,7 @@ from openpyxl.utils import get_column_letter as CL
 import konoha_real_simulation
 import sut_wakanda_bridge
 
-st.set_page_config(page_title="LK PKRT & Deflator Kab. Konoha", page_icon="📊", layout="wide")
+st.set_page_config(page_title="LK PKRT & Deflator", page_icon="📊", layout="wide")
 
 # ============================ KONSTANTA ============================
 Q_FULL = [f"{y}Q{q}" for y in range(2019, 2027) for q in (1, 2, 3, 4)]
@@ -563,7 +563,7 @@ if S["periode"] not in PER_OPT:
     S["periode"] = PER_OPT[-1]
 st.sidebar.selectbox("Periode estimasi (YYYY-QQ)", PER_OPT,
                      index=PER_OPT.index(S["periode"]), key="periode")
-st.sidebar.caption("Kab. Konoha (XX.XX) · Sister city Kota Konoha (XX) · Tahun dasar 2025=100")
+st.sidebar.caption("Kab. Konoha (XX.XX) · Sister city Kota Konoha (ZZ) · Tahun dasar 2025=100")
 st.sidebar.caption("Sumber aktif: " + S.get("sumber_data", "-"))
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 💾 Simpan / Muat Pekerjaan")
