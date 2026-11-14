@@ -1254,7 +1254,7 @@ W = PKRTWorkspace(e0[0].reindex(columns=Q_ACT) if e0 else None,
 # bangun workspace dengan e0 opsional
 _e0b = S["e0"][0] if S["e0"] else None
 _e0k = S["e0"][1] if S["e0"] else None
-W = PKRTWorkspace(_e0b, _e0k, seruti, defl, S["beta"], S["sut25"], S["mode_bench"] == "B", popq, Q_ACT)
+W = PKRTWorkspace((_e0b, _e0k), seruti, defl, S["beta"], S["sut25"], S["mode_bench"] == "B", popq, Q_ACT)
 
 sut = SUTJabar2020Benchmark()
 share_ser = (seruti[[c for c in seruti.columns if c.startswith("2025")]].sum(axis=1)
